@@ -161,12 +161,15 @@ int list_slots()
 	for (s = servants_leader; s; s = s->next) {
 		DBGPRINT("list slots on device %s\n", s->devname);
 		st = open_device(s->devname);
-		if (!st)
-			return -1;
+		if (!st) {
+			fprintf(stdout, "== disk %s unreadable!\n", s->devname);
+			continue;
+		}
 		rc = slot_list(st);
 		close_device(st);
-		if (rc == -1)
-			return rc;
+		if (rc == -1) {
+			fprintf(stdout, "== Slots on disk %s NOT dumped\n", s->devname);
+		}
 	}
 	return 0;
 }
@@ -825,13 +828,19 @@ int dump_headers(void)
 	for (s = servants_leader; s; s = s->next) {
 		fprintf(stdout, "==Dumping header on disk %s\n", s->devname);
 		st = open_device(s->devname);
-		if (!st)
-			return -1;
+		if (!st) {
+			fprintf(stdout, "== disk %s unreadable!\n", s->devname);
+			continue;
+		}
+
 		rc = header_dump(st);
 		close_device(st);
-		if (rc == -1)
-			return rc;
-		fprintf(stdout, "==Header on disk %s is dumped\n", s->devname);
+
+		if (rc == -1) {
+			fprintf(stdout, "==Header on disk %s NOT dumped\n", s->devname);
+		} else {
+			fprintf(stdout, "==Header on disk %s is dumped\n", s->devname);
+		}
 	}
 	return rc;
 }
