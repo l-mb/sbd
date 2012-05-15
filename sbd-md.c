@@ -108,6 +108,8 @@ int slot_msg_wrapper(const char* devname, const void* argp)
         st = open_device(devname);
         if (!st) 
 		return -1;
+	cl_log(LOG_INFO, "Delivery process handling %s",
+			devname);
 	rc = slot_msg(st, arg->name, arg->msg);
 	close_device(st);
 	return rc;
@@ -606,7 +608,7 @@ void inquisitor_child(void)
 		} else if (sig == SIG_IO_FAIL) {
 			s = lookup_servant_by_pid(sinfo.si_pid);
 			if (s) {
-				cl_log(LOG_WARNING, "Servant for %s requests to be disowned",
+				cl_log(LOG_INFO, "Servant for %s requests to be disowned",
 						s->devname);
 				cleanup_servant_by_pid(sinfo.si_pid);
 			}
@@ -697,8 +699,8 @@ void inquisitor_child(void)
 					&& (s->restarts >= servant_restart_count)
 					&& !s->restart_blocked) {
 				if (servant_restart_count > 1) {
-					cl_log(LOG_WARNING, "Max retry count reached: not restarting servant for %s",
-							s->devname);
+					cl_log(LOG_WARNING, "Max retry count (%d) reached: not restarting servant for %s",
+							(int)servant_restart_count, s->devname);
 				}
 				s->restart_blocked = 1;
 			}
@@ -792,29 +794,32 @@ int messenger(const char *name, const char *msg)
 	while (!(quorum_write(successful_delivery) || 
 		(servants_finished == servant_count))) {
 		sig = sigwaitinfo(&procmask, &sinfo);
-		DBGPRINT("get signal %d\n", sig);
 		if (sig == SIGCHLD) {
 			while ((pid = waitpid(-1, &status, WNOHANG))) {
 				if (pid == -1 && errno == ECHILD) {
 					break;
 				} else {
-					DBGPRINT("process %d finished\n", pid);
 					servants_finished++;
 					if (WIFEXITED(status)
 						&& WEXITSTATUS(status) == 0) {
 						DBGPRINT("exit with %d\n",
 								WEXITSTATUS(status));
+						cl_log(LOG_INFO, "Process %d succeeded.",
+								(int)pid);
 						successful_delivery++;
+					} else {
+						cl_log(LOG_WARNING, "Process %d failed to deliver!",
+								(int)pid);
 					}
 				}
 			}
 		}
-		DBGPRINT("signal %d handled\n", sig);
 	}
 	if (quorum_write(successful_delivery)) {
+		cl_log(LOG_ERR, "Message successfully delivered.");
 		return 0;
 	} else {
-		fprintf(stderr, "Message is not delivered via more then a half of devices\n");
+		cl_log(LOG_ERR, "Message is not delivered via more then a half of devices");
 		return -1;
 	}
 }
@@ -868,18 +873,23 @@ int main(int argc, char **argv, char **envp)
 			break;
 		case 'Z':
 			debug_mode++;
+			cl_log(LOG_INFO, "Debug mode now at level %d", (int)debug_mode);
 			break;
 		case 'R':
 			skip_rt = 1;
+			cl_log(LOG_INFO, "Realtime mode deactivated.");
 			break;
 		case 'v':
 			debug = 1;
+			cl_log(LOG_INFO, "Verbose mode enabled.");
 			break;
 		case 'T':
 			watchdog_set_timeout = 0;
+			cl_log(LOG_INFO, "Setting watchdog timeout disabled; using defaults.");
 			break;
 		case 'W':
 			watchdog_use = 1;
+			cl_log(LOG_INFO, "Watchdog enabled.");
 			break;
 		case 'w':
 			watchdogdev = optarg;
@@ -889,6 +899,7 @@ int main(int argc, char **argv, char **envp)
 			break;
 		case 'n':
 			local_uname = optarg;
+			cl_log(LOG_INFO, "Overriding local hostname to %s", local_uname);
 			break;
 		case '1':
 			timeout_watchdog = atoi(optarg);
@@ -904,15 +915,23 @@ int main(int argc, char **argv, char **envp)
 			break;
 		case '5':
 			timeout_watchdog_warn = atoi(optarg);
+			cl_log(LOG_INFO, "Setting latency warning to %d",
+					(int)timeout_watchdog_warn);
 			break;
 		case 't':
 			servant_restart_interval = atoi(optarg);
+			cl_log(LOG_INFO, "Setting servant restart interval to %d",
+					(int)servant_restart_interval);
 			break;
 		case 'I':
 			timeout_io = atoi(optarg);
+			cl_log(LOG_INFO, "Setting IO timeout to %d",
+					(int)timeout_io);
 			break;
 		case 'F':
 			servant_restart_count = atoi(optarg);
+			cl_log(LOG_INFO, "Servant restart count set to %d",
+					(int)servant_restart_count);
 			break;
 		case 'h':
 			usage();

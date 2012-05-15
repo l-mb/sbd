@@ -342,11 +342,12 @@ sector_read(struct sbd_context *st, int sector, void *data)
 		cl_log(LOG_ERR, "Failed to retrieve IO events");
 		return -1;
 	} else if (r < 1L) {
-		cl_log(LOG_WARNING, "Cancelling IO request due to timeout");
+		cl_log(LOG_INFO, "Cancelling IO request due to timeout");
 		r = io_cancel(st->ioctx, ios[0], &event);
 		if (r) {
-			cl_log(LOG_ERR, "Could not cancel IO request!");
-			/* TODO: Couldn't cancel the IO */
+			cl_log(LOG_INFO, "Could not cancel IO request.");
+			/* Doesn't really matter, debugging information.
+			 */
 		}
 		return -1;
 	}
@@ -733,6 +734,8 @@ slot_msg(struct sbd_context *st, const char *name, const char *cmd)
 		rc = -1; goto out;
 	}
 	if (strcasecmp(cmd, "exit") != 0) {
+		cl_log(LOG_INFO, "Messaging delay: %d",
+				(int)timeout_msgwait);
 		sleep(timeout_msgwait);
 	}
 	cl_log(LOG_INFO, "%s successfully delivered to %s",
