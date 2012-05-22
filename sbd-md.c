@@ -24,14 +24,7 @@ static int	servant_count	= 0;
 static int	servant_restart_interval = 60;
 static int	servant_restart_count = 10;
 static int	servant_inform_parent = 0;
-
-/* signals reserved for multi-disk sbd */
-#define SIG_LIVENESS (SIGRTMIN + 1)	/* report liveness of the disk */
-#define SIG_EXITREQ  (SIGRTMIN + 2)	/* exit request to inquisitor */
-#define SIG_TEST     (SIGRTMIN + 3)	/* trigger self test */
-#define SIG_RESTART  (SIGRTMIN + 4)	/* trigger restart of all failed disk */
-#define SIG_IO_FAIL  (SIGRTMIN + 5)	/* the IO child requests to be considered failed */
-/* FIXME: should add dynamic check of SIG_XX >= SIGRTMAX */
+static int	check_pcmk = 0;
 
 /* Debug Helper */
 #if 0
@@ -444,10 +437,16 @@ void servant_start(struct servants_list_item *s)
 		if ((r != -1 || errno != ESRCH))
 			return;
 	}
-	cl_log(LOG_INFO, "Starting servant for device %s",
-			s->devname);
 	s->restarts++;
-	s->pid = assign_servant(s->devname, servant, NULL);
+	if (strcmp("pcmk",s->devname) == 0) {
+		cl_log(LOG_INFO, "Starting Pacemaker servant");
+		s->pid = assign_servant(s->devname, servant_pcmk, NULL);
+	} else {
+		cl_log(LOG_INFO, "Starting servant for device %s",
+				s->devname);
+		s->pid = assign_servant(s->devname, servant, NULL);
+	}
+
 	clock_gettime(CLOCK_MONOTONIC, &s->t_started);
 	return;
 }
@@ -557,9 +556,9 @@ void inquisitor_child(void)
 	siginfo_t sinfo;
 	int status;
 	struct timespec timeout;
-	int good_servants = 0;
 	int exiting = 0;
 	int decoupled = 0;
+	int pcmk_healthy = 0;
 	time_t latency;
 	struct timespec t_last_tickle, t_now;
 	struct servants_list_item* s;
@@ -580,14 +579,22 @@ void inquisitor_child(void)
 	sigaddset(&procmask, SIGUSR2);
 	sigprocmask(SIG_BLOCK, &procmask, NULL);
 
+	/* We only want this to have an effect during watch right now;
+	 * pinging and fencing would be too confused */
+	if (check_pcmk) {
+		recruit_servant("pcmk", 0);
+		servant_count--;
+	}
+
 	servants_start();
 
 	timeout.tv_sec = timeout_loop;
 	timeout.tv_nsec = 0;
-	good_servants = 0;
 	clock_gettime(CLOCK_MONOTONIC, &t_last_tickle);
 
 	while (1) {
+		int good_servants = 0;
+
 		sig = sigtimedwait(&procmask, &sinfo, &timeout);
 		DBGPRINT("got signal %d\n", sig);
 
@@ -605,6 +612,15 @@ void inquisitor_child(void)
 					cleanup_servant_by_pid(pid);
 				}
 			}
+		} else if (sig == SIG_PCMK_UNHEALTHY) {
+			s = lookup_servant_by_pid(sinfo.si_pid);
+			if (s && strcmp(s->devname, "pcmk") == 0) {
+				cl_log(LOG_WARNING, "Pacemaker health check: UNHEALTHY");
+				pcmk_healthy = 0;
+				clock_gettime(CLOCK_MONOTONIC, &s->t_last);
+			} else {
+				cl_log(LOG_WARNING, "Ignoring SIG_PCMK_UNHEALTHY from unknown source");
+			}
 		} else if (sig == SIG_IO_FAIL) {
 			s = lookup_servant_by_pid(sinfo.si_pid);
 			if (s) {
@@ -615,7 +631,12 @@ void inquisitor_child(void)
 		} else if (sig == SIG_LIVENESS) {
 			s = lookup_servant_by_pid(sinfo.si_pid);
 			if (s) {
+				if (strcmp(s->devname, "pcmk") == 0) {
+					cl_log(LOG_INFO, "Pacemaker health check: OK");
+					pcmk_healthy = 1;
+				};
 				clock_gettime(CLOCK_MONOTONIC, &s->t_last);
+
 			}
 		} else if (sig == SIG_TEST) {
 		} else if (sig == SIGUSR1) {
@@ -637,17 +658,22 @@ void inquisitor_child(void)
 
 			if (!s->t_last.tv_sec)
 				continue;
+			
+			if (strcmp(s->devname, "pcmk") == 0)
+				continue;
 
 			if (age < timeout_watchdog) {
 				good_servants++;
-			} else {
+				s->outdated = 0;
+			} else if (!s->outdated) {
+				s->outdated = 1;
 				if (!s->restart_blocked)
 					cl_log(LOG_WARNING, "Servant for %s outdated (age: %d)",
 						s->devname, age);
 			}
 		}
 
-		if (quorum_read(good_servants)) {
+		if (quorum_read(good_servants) || pcmk_healthy) {
 			if (!decoupled) {
 				if (inquisitor_decouple() < 0) {
 					servants_kill();
@@ -867,7 +893,7 @@ int main(int argc, char **argv, char **envp)
 
 	get_uname();
 
-	while ((c = getopt(argc, argv, "DRTWZhvw:d:n:1:2:3:4:5:t:I:F:")) != -1) {
+	while ((c = getopt(argc, argv, "DPRTWZhvw:d:n:1:2:3:4:5:t:I:F:")) != -1) {
 		switch (c) {
 		case 'D':
 			break;
@@ -896,6 +922,9 @@ int main(int argc, char **argv, char **envp)
 			break;
 		case 'd':
 			recruit_servant(optarg, 0);
+			break;
+		case 'P':
+			check_pcmk = 1;
 			break;
 		case 'n':
 			local_uname = optarg;

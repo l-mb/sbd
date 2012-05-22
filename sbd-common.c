@@ -16,6 +16,7 @@ int		timeout_io		= 3;
 int	watchdog_use		= 0;
 int	watchdog_set_timeout	= 1;
 int	skip_rt			= 0;
+int	check_pcmk		= 0;
 int	debug			= 0;
 int	debug_mode		= 0;
 const char *watchdogdev		= "/dev/watchdog";
@@ -57,6 +58,7 @@ usage(void)
 "			(default is 60, set to 0 to disable)\n"
 "-F <N>		# of failures before a servant is considered faulty (optional)\n"
 "			(default is 10, set to 0 to disable)\n"
+"-P		Check Pacemaker quorum and node health (optional, watch only)\n"
 "-Z		Enable trace mode. WARNING: UNSAFE FOR PRODUCTION!\n"
 "Commands:\n"
 "create		initialize N slots on <dev> - OVERWRITES DEVICE!\n"

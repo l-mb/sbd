@@ -45,6 +45,15 @@
 #include <time.h>
 #include <unistd.h>
 
+/* signals reserved for multi-disk sbd */
+#define SIG_LIVENESS (SIGRTMIN + 1)	/* report liveness of the disk */
+#define SIG_EXITREQ  (SIGRTMIN + 2)	/* exit request to inquisitor */
+#define SIG_TEST     (SIGRTMIN + 3)	/* trigger self test */
+#define SIG_RESTART  (SIGRTMIN + 4)	/* trigger restart of all failed disk */
+#define SIG_IO_FAIL  (SIGRTMIN + 5)	/* the IO child requests to be considered failed */
+#define SIG_PCMK_UNHEALTHY  (SIGRTMIN + 6)
+/* FIXME: should add dynamic check of SIG_XX >= SIGRTMAX */
+
 /* Sector data types */
 struct sector_header_s {
 	char	magic[8];
@@ -74,6 +83,7 @@ struct servants_list_item {
 	pid_t pid;
 	int restarts;
 	int restart_blocked;
+	int outdated;
 	struct timespec t_last, t_started;
 	struct servants_list_item *next;
 };
@@ -187,4 +197,7 @@ int check_timeout_inconsistent(void);
 void cleanup_servant_by_pid(pid_t pid);
 int quorum_write(int good_servants);
 int quorum_read(int good_servants);
+
+int pcmk_have_quorum(void);
+int servant_pcmk(const char *diskname, const void* argp);
 
