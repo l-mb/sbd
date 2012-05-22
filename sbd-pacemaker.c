@@ -253,7 +253,7 @@ notify_parent:
 		DBGLOG(LOG_INFO, "Notifying parent: healthy");
 		sigqueue(ppid, SIG_LIVENESS, signal_value);
 	} else {
-		cl_log(LOG_WARNING, "Notifying parent: UNHEALTHY");
+		DBGLOG(LOG_WARNING, "Notifying parent: UNHEALTHY");
 		sigqueue(ppid, SIG_PCMK_UNHEALTHY, signal_value);
 	}
 

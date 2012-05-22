@@ -26,13 +26,6 @@ static int	servant_restart_count = 10;
 static int	servant_inform_parent = 0;
 static int	check_pcmk = 0;
 
-/* Debug Helper */
-#if 0
-#define DBGPRINT(...) fprintf(stderr, __VA_ARGS__)
-#else
-#define DBGPRINT(...) do {} while (0)
-#endif
-
 int quorum_write(int good_servants)
 {
 	return (good_servants > servant_count/2);	
@@ -51,7 +44,6 @@ int assign_servant(const char* devname, functionp_t functionp, const void* argp)
 	pid_t pid = 0;
 	int rc = 0;
 
-	DBGPRINT("fork servant for %s\n", devname);
 	pid = fork();
 	if (pid == 0) {		/* child */
 		maximize_priority();
@@ -154,7 +146,6 @@ int list_slots()
 	struct sbd_context *st;
 
 	for (s = servants_leader; s; s = s->next) {
-		DBGPRINT("list slots on device %s\n", s->devname);
 		st = open_device(s->devname);
 		if (!st) {
 			fprintf(stdout, "== disk %s unreadable!\n", s->devname);
@@ -189,7 +180,6 @@ int ping_via_slots(const char *name)
 
 	while (servants_finished < servant_count) {
 		sig = sigwaitinfo(&procmask, &sinfo);
-		DBGPRINT("get signal %d\n", sig);
 		if (sig == SIGCHLD) {
 			while ((pid = wait(&status))) {
 				if (pid == -1 && errno == ECHILD) {
@@ -197,21 +187,11 @@ int ping_via_slots(const char *name)
 				} else {
 					s = lookup_servant_by_pid(pid);
 					if (s) {
-						DBGPRINT
-						    ("A ping is delivered to %s via %s. ",
-						     name, s->devname);
-						if (!status)
-							DBGPRINT
-							    ("They responed to the emporer\n");
-						else
-							DBGPRINT
-							    ("There's no response\n");
 						servants_finished++;
 					}
 				}
 			}
 		}
-		DBGPRINT("signal %d handled\n", sig);
 	}
 	return 0;
 }
@@ -598,7 +578,6 @@ void inquisitor_child(void)
 		int good_servants = 0;
 
 		sig = sigtimedwait(&procmask, &sinfo, &timeout);
-		DBGPRINT("got signal %d\n", sig);
 
 		clock_gettime(CLOCK_MONOTONIC, &t_now);
 
@@ -617,7 +596,9 @@ void inquisitor_child(void)
 		} else if (sig == SIG_PCMK_UNHEALTHY) {
 			s = lookup_servant_by_pid(sinfo.si_pid);
 			if (s && strcmp(s->devname, "pcmk") == 0) {
-				DBGLOG(LOG_WARNING, "Pacemaker health check: UNHEALTHY");
+				if (pcmk_healthy != 0) {
+					cl_log(LOG_WARNING, "Pacemaker health check: UNHEALTHY");
+				}
 				pcmk_healthy = 0;
 				clock_gettime(CLOCK_MONOTONIC, &s->t_last);
 			} else {
@@ -634,7 +615,9 @@ void inquisitor_child(void)
 			s = lookup_servant_by_pid(sinfo.si_pid);
 			if (s) {
 				if (strcmp(s->devname, "pcmk") == 0) {
-					DBGLOG(LOG_INFO, "Pacemaker health check: OK");
+					if (pcmk_healthy != 1) {
+						DBGLOG(LOG_INFO, "Pacemaker health check: OK");
+					}
 					pcmk_healthy = 1;
 				};
 				clock_gettime(CLOCK_MONOTONIC, &s->t_last);
@@ -749,8 +732,6 @@ int inquisitor(void)
 	sigset_t procmask;
 	siginfo_t sinfo;
 
-	DBGPRINT("inquisitor starting\n");
-
 	/* Where's the best place for sysrq init ?*/
 	sysrq_init();
 
@@ -777,7 +758,6 @@ int inquisitor(void)
 
 	while (1) {
 		sig = sigwaitinfo(&procmask, &sinfo);
-		DBGPRINT("get signal %d\n", sig);
 		if (sig == SIGCHLD) {
 			while ((pid = waitpid(-1, &status, WNOHANG))) {
 				if (pid == -1 && errno == ECHILD) {
@@ -830,8 +810,6 @@ int messenger(const char *name, const char *msg)
 					servants_finished++;
 					if (WIFEXITED(status)
 						&& WEXITSTATUS(status) == 0) {
-						DBGPRINT("exit with %d\n",
-								WEXITSTATUS(status));
 						DBGLOG(LOG_INFO, "Process %d succeeded.",
 								(int)pid);
 						successful_delivery++;

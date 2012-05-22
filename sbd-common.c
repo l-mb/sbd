@@ -564,7 +564,7 @@ slot_lookup(struct sbd_context *st, const struct sector_header_s *s_header, cons
 		if (s_node->in_use != 0) {
 			if (strncasecmp(s_node->name, name,
 						sizeof(s_node->name)) == 0) {
-				cl_log(LOG_INFO, "%s owns slot %d", name, i);
+				DBGLOG(LOG_INFO, "%s owns slot %d", name, i);
 				rc = i; goto out;
 			}
 		}
