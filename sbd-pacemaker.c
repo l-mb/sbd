@@ -61,6 +61,7 @@ void clean_up(int rc);
 void crm_diff_update(const char *event, xmlNode * msg);
 gboolean mon_refresh_state(gpointer user_data);
 int cib_connect(gboolean full);
+void notify_parent(int healthy);
 
 int reconnect_msec = 5000;
 GMainLoop *mainloop = NULL;
@@ -85,6 +86,7 @@ mon_timer_popped(gpointer data)
 
     if (rc != cib_ok) {
         timer_id = g_timeout_add(reconnect_msec, mon_timer_popped, NULL);
+	notify_parent(0);
     }
     return FALSE;
 }
@@ -92,12 +94,13 @@ mon_timer_popped(gpointer data)
 static void
 mon_cib_connection_destroy(gpointer user_data)
 {
-    if (cib) {
-        /* Reconnecting */
-	cib->cmds->signoff(cib);
-        timer_id = g_timeout_add(reconnect_msec, mon_timer_popped, NULL);
-    }
-    return;
+	if (cib) {
+		notify_parent(0);
+		/* Reconnecting */
+		cib->cmds->signoff(cib);
+		timer_id = g_timeout_add(reconnect_msec, mon_timer_popped, NULL);
+	}
+	return;
 }
 
 /*
@@ -205,11 +208,57 @@ compute_status(pe_working_set_t * data_set)
 {
 	static int	updates = 0;
 	static int	last_state = 0;
-	int		healthy = 1;
+	int		healthy = 0;
 	node_t *dc		= NULL;
+
+	updates++;
+	dc = data_set->dc_node;
+
+	if (dc == NULL) {
+		/* Means we don't know if we have quorum. Hrm. Probably needs to
+		* allow for this state for a period of time and then decide
+		* that we don't have quorum - TODO - should we skip
+		* notifying the parent? */
+		LOGONCE(1, LOG_INFO, "We don't have a DC right now.");
+		goto out;
+	} else {
+		const char *quorum = crm_element_value(data_set->input, XML_ATTR_HAVE_QUORUM);
+
+		if (crm_is_true(quorum)) {
+			DBGLOG(LOG_INFO, "We have quorum!");
+		} else {
+			LOGONCE(3, LOG_WARNING, "We do NOT have quorum!");
+			goto out;
+		}
+	}
+
+	node_t *node = pe_find_node(data_set->nodes, local_uname);
+
+	if (node->details->unclean) {
+		LOGONCE(4, LOG_WARNING, "Node state: UNCLEAN");
+		goto out;
+	} else if (node->details->pending) {
+		LOGONCE(5, LOG_WARNING, "Node state: pending");
+		/* TODO ? */
+	} else if (node->details->online) {
+		LOGONCE(6, LOG_INFO, "Node state: online");
+		healthy = 1;
+	} else {
+		LOGONCE(7, LOG_WARNING, "Node state: UNKNOWN");
+		goto out;
+	}
+
+out:
+	notify_parent(healthy);
+
+	return 0;
+}
+
+void
+notify_parent(int healthy)
+{
 	pid_t		ppid;
 	union sigval	signal_value;
-
 
 	memset(&signal_value, 0, sizeof(signal_value));
 	ppid = getppid();
@@ -221,42 +270,6 @@ compute_status(pe_working_set_t * data_set)
 		do_reset();
 	}
 
-	updates++;
-	dc = data_set->dc_node;
-
-	if (dc == NULL) {
-		/* Means we don't know if we have quorum. Hrm. Probably needs to
-		* allow for this state for a period of time and then decide
-		* that we don't have quorum - TODO */
-		LOGONCE(1, LOG_INFO, "We don't have a DC right now.");
-		goto notify_parent;
-	} else {
-		const char *quorum = crm_element_value(data_set->input, XML_ATTR_HAVE_QUORUM);
-
-		if (crm_is_true(quorum)) {
-			DBGLOG(LOG_INFO, "We have quorum!");
-		} else {
-			LOGONCE(3, LOG_WARNING, "We do NOT have quorum!");
-			healthy = 0; goto notify_parent;
-		}
-	}
-
-	node_t *node = pe_find_node(data_set->nodes, local_uname);
-
-	if (node->details->unclean) {
-		LOGONCE(4, LOG_WARNING, "Node state: UNCLEAN");
-		healthy = 0; goto notify_parent;
-	} else if (node->details->pending) {
-		LOGONCE(5, LOG_WARNING, "Node state: pending");
-		/* TODO ? */
-	} else if (node->details->online) {
-		LOGONCE(6, LOG_INFO, "Node state: online");
-	} else {
-		LOGONCE(7, LOG_WARNING, "Node state: UNKNOWN");
-		healthy = 0; goto notify_parent;
-	}
-
-notify_parent:
 	if (healthy) {
 		DBGLOG(LOG_INFO, "Notifying parent: healthy");
 		sigqueue(ppid, SIG_LIVENESS, signal_value);
@@ -264,8 +277,6 @@ notify_parent:
 		DBGLOG(LOG_WARNING, "Notifying parent: UNHEALTHY");
 		sigqueue(ppid, SIG_PCMK_UNHEALTHY, signal_value);
 	}
-
-	return 0;
 }
 
 void
