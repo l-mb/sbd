@@ -873,7 +873,7 @@ int main(int argc, char **argv, char **envp)
 
 	get_uname();
 
-	while ((c = getopt(argc, argv, "DPRTWZhvw:d:n:1:2:3:4:5:t:I:F:")) != -1) {
+	while ((c = getopt(argc, argv, "C:DPRTWZhvw:d:n:1:2:3:4:5:t:I:F:")) != -1) {
 		switch (c) {
 		case 'D':
 			break;
@@ -909,6 +909,11 @@ int main(int argc, char **argv, char **envp)
 		case 'n':
 			local_uname = optarg;
 			cl_log(LOG_INFO, "Overriding local hostname to %s", local_uname);
+			break;
+		case 'C':
+			timeout_watchdog_crashdump = atoi(optarg);
+			cl_log(LOG_INFO, "Setting crashdump watchdog timeout to %d",
+					(int)timeout_watchdog_crashdump);
 			break;
 		case '1':
 			timeout_watchdog = atoi(optarg);

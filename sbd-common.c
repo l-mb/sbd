@@ -15,6 +15,7 @@ int		timeout_io		= 3;
 
 int	watchdog_use		= 0;
 int	watchdog_set_timeout	= 1;
+unsigned long	timeout_watchdog_crashdump = 240;
 int	skip_rt			= 0;
 int	check_pcmk		= 0;
 int	debug			= 0;
@@ -53,6 +54,7 @@ usage(void)
 "-4 <N>		Set msgwait timeout to N seconds (optional, create only)\n"
 "-5 <N>		Warn if loop latency exceeds threshold (optional, watch only)\n"
 "			(default is 3, set to 0 to disable)\n"
+"-C <N>		Watchdog timeout to set before crashdumping (def: 240s, optional)\n"
 "-I <N>		Async IO read timeout (defaults to 3 * loop timeout, optional)\n"
 "-t <N>		Dampening delay before faulty servants are restarted (optional)\n"
 "			(default is 60, set to 0 to disable)\n"
@@ -856,6 +858,11 @@ sysrq_trigger(char t)
 void
 do_crashdump(void)
 {
+	if (timeout_watchdog_crashdump) {
+		timeout_watchdog = timeout_watchdog_crashdump;
+		watchdog_init_interval();
+		watchdog_tickle();
+	}
 	sysrq_trigger('c');
 	/* is it possible to reach the following line? */
 	cl_reboot(5, "sbd is triggering crashdumping");

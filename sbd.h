@@ -148,6 +148,7 @@ void get_uname(void);
 /* Tunable defaults: */
 extern unsigned long    timeout_watchdog;
 extern unsigned long    timeout_watchdog_warn;
+extern unsigned long    timeout_watchdog_crashdump;
 extern int      timeout_allocate;
 extern int      timeout_loop;
 extern int      timeout_msgwait;
