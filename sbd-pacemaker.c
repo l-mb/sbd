@@ -193,10 +193,18 @@ servant_pcmk(const char *diskname, const void* argp)
 	return 0;                   /* never reached */
 }
 
+#define LOGONCE(state, lvl, fmt, args...) do {	\
+	if (last_state != state) {		\
+		cl_log(lvl, fmt, ##args);	\
+		last_state = state;		\
+	}					\
+	} while(0)
+
 static int
 compute_status(pe_working_set_t * data_set)
 {
 	static int	updates = 0;
+	static int	last_state = 0;
 	int		healthy = 1;
 	node_t *dc		= NULL;
 	pid_t		ppid;
@@ -220,7 +228,7 @@ compute_status(pe_working_set_t * data_set)
 		/* Means we don't know if we have quorum. Hrm. Probably needs to
 		* allow for this state for a period of time and then decide
 		* that we don't have quorum - TODO */
-		cl_log(LOG_INFO, "We don't have a DC right now.");
+		LOGONCE(1, LOG_INFO, "We don't have a DC right now.");
 		goto notify_parent;
 	} else {
 		const char *quorum = crm_element_value(data_set->input, XML_ATTR_HAVE_QUORUM);
@@ -228,7 +236,7 @@ compute_status(pe_working_set_t * data_set)
 		if (crm_is_true(quorum)) {
 			DBGLOG(LOG_INFO, "We have quorum!");
 		} else {
-			cl_log(LOG_WARNING, "We do NOT have quorum!");
+			LOGONCE(3, LOG_WARNING, "We do NOT have quorum!");
 			healthy = 0; goto notify_parent;
 		}
 	}
@@ -236,15 +244,15 @@ compute_status(pe_working_set_t * data_set)
 	node_t *node = pe_find_node(data_set->nodes, local_uname);
 
 	if (node->details->unclean) {
-		cl_log(LOG_WARNING, "Node state: UNCLEAN");
+		LOGONCE(4, LOG_WARNING, "Node state: UNCLEAN");
 		healthy = 0; goto notify_parent;
 	} else if (node->details->pending) {
-		cl_log(LOG_WARNING, "Node state: pending");
+		LOGONCE(5, LOG_WARNING, "Node state: pending");
 		/* TODO ? */
 	} else if (node->details->online) {
-		DBGLOG(LOG_INFO, "Node state: online");
+		LOGONCE(6, LOG_INFO, "Node state: online");
 	} else {
-		cl_log(LOG_WARNING, "Node state: UNKNOWN");
+		LOGONCE(7, LOG_WARNING, "Node state: UNKNOWN");
 		healthy = 0; goto notify_parent;
 	}
 
