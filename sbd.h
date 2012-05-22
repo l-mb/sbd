@@ -202,5 +202,5 @@ int pcmk_have_quorum(void);
 int servant_pcmk(const char *diskname, const void* argp);
 
 #define DBGLOG(lvl, fmt, args...) do { \
-	if (debug > 1) cl_log(lvl, fmt, args...) \
-	} while(0);
+	if (debug > 1) cl_log(lvl, fmt, ##args); \
+	} while(0)
