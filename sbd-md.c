@@ -21,8 +21,8 @@
 struct servants_list_item *servants_leader = NULL;
 
 static int	servant_count	= 0;
-static int	servant_restart_interval = 60;
-static int	servant_restart_count = 10;
+static int	servant_restart_interval = 5;
+static int	servant_restart_count = 1;
 static int	servant_inform_parent = 0;
 static int	check_pcmk = 0;
 
