@@ -616,7 +616,7 @@ void inquisitor_child(void)
 			if (s) {
 				if (strcmp(s->devname, "pcmk") == 0) {
 					if (pcmk_healthy != 1) {
-						DBGLOG(LOG_INFO, "Pacemaker health check: OK");
+						cl_log(LOG_INFO, "Pacemaker health check: OK");
 					}
 					pcmk_healthy = 1;
 				};
