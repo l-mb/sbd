@@ -575,6 +575,8 @@ void inquisitor_child(void)
 	sigaddset(&procmask, SIG_EXITREQ);
 	sigaddset(&procmask, SIG_TEST);
 	sigaddset(&procmask, SIG_IO_FAIL);
+	sigaddset(&procmask, SIG_PCMK_UNHEALTHY);
+	sigaddset(&procmask, SIG_RESTART);
 	sigaddset(&procmask, SIGUSR1);
 	sigaddset(&procmask, SIGUSR2);
 	sigprocmask(SIG_BLOCK, &procmask, NULL);
