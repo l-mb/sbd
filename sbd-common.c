@@ -347,7 +347,7 @@ sector_read(struct sbd_context *st, int sector, void *data)
 		cl_log(LOG_INFO, "Cancelling IO request due to timeout");
 		r = io_cancel(st->ioctx, ios[0], &event);
 		if (r) {
-			cl_log(LOG_INFO, "Could not cancel IO request.");
+			DBGLOG(LOG_INFO, "Could not cancel IO request.");
 			/* Doesn't really matter, debugging information.
 			 */
 		}
@@ -782,7 +782,7 @@ slot_ping(struct sbd_context *st, const char *name)
 
 	strncpy(s_mbox->from, local_uname, sizeof(s_mbox->from)-1);
 
-	cl_log(LOG_DEBUG, "Pinging node %s", name);
+	DBGLOG(LOG_DEBUG, "Pinging node %s", name);
 	if (mbox_write(st, mbox, s_mbox) < -1) {
 		rc = -1; goto out;
 	}

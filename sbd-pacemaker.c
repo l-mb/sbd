@@ -226,7 +226,7 @@ compute_status(pe_working_set_t * data_set)
 		const char *quorum = crm_element_value(data_set->input, XML_ATTR_HAVE_QUORUM);
 
 		if (crm_is_true(quorum)) {
-			cl_log(LOG_INFO, "We have quorum!");
+			DBGLOG(LOG_INFO, "We have quorum!");
 		} else {
 			cl_log(LOG_WARNING, "We do NOT have quorum!");
 			healthy = 0; goto notify_parent;
@@ -242,7 +242,7 @@ compute_status(pe_working_set_t * data_set)
 		cl_log(LOG_WARNING, "Node state: pending");
 		/* TODO ? */
 	} else if (node->details->online) {
-		cl_log(LOG_INFO, "Node state: online");
+		DBGLOG(LOG_INFO, "Node state: online");
 	} else {
 		cl_log(LOG_WARNING, "Node state: UNKNOWN");
 		healthy = 0; goto notify_parent;
@@ -250,7 +250,7 @@ compute_status(pe_working_set_t * data_set)
 
 notify_parent:
 	if (healthy) {
-		cl_log(LOG_INFO, "Notifying parent: healthy");
+		DBGLOG(LOG_INFO, "Notifying parent: healthy");
 		sigqueue(ppid, SIG_LIVENESS, signal_value);
 	} else {
 		cl_log(LOG_WARNING, "Notifying parent: UNHEALTHY");

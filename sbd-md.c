@@ -275,7 +275,7 @@ int servant(const char *diskname, const void* argp)
 		rc = -1;
 		goto out;
 	}
-	cl_log(LOG_INFO, "Monitoring slot %d on disk %s", mbox, diskname);
+	DBGLOG(LOG_INFO, "Monitoring slot %d on disk %s", mbox, diskname);
 	set_proc_title("sbd: watcher: %s - slot: %d", diskname, mbox);
 
 	s_mbox = sector_alloc();
@@ -349,7 +349,7 @@ int servant(const char *diskname, const void* argp)
 			       (int)latency, (int)timeout_watchdog_warn,
 			       diskname);
 		} else if (debug) {
-			cl_log(LOG_INFO, "Latency: %d on disk %s", (int)latency,
+			DBGLOG(LOG_INFO, "Latency: %d on disk %s", (int)latency,
 			       diskname);
 		}
 	}
@@ -439,10 +439,10 @@ void servant_start(struct servants_list_item *s)
 	}
 	s->restarts++;
 	if (strcmp("pcmk",s->devname) == 0) {
-		cl_log(LOG_INFO, "Starting Pacemaker servant");
+		DBGLOG(LOG_INFO, "Starting Pacemaker servant");
 		s->pid = assign_servant(s->devname, servant_pcmk, NULL);
 	} else {
-		cl_log(LOG_INFO, "Starting servant for device %s",
+		DBGLOG(LOG_INFO, "Starting servant for device %s",
 				s->devname);
 		s->pid = assign_servant(s->devname, servant, NULL);
 	}
@@ -525,7 +525,7 @@ inline void cleanup_servant_by_pid(pid_t pid)
 		/* This most likely is a stray signal from somewhere, or
 		 * a SIGCHLD for a process that has previously
 		 * explicitly disconnected. */
-		cl_log(LOG_INFO, "cleanup_servant: Nothing known about pid %i",
+		DBGLOG(LOG_INFO, "cleanup_servant: Nothing known about pid %i",
 				pid);
 	}
 }
@@ -617,7 +617,7 @@ void inquisitor_child(void)
 		} else if (sig == SIG_PCMK_UNHEALTHY) {
 			s = lookup_servant_by_pid(sinfo.si_pid);
 			if (s && strcmp(s->devname, "pcmk") == 0) {
-				cl_log(LOG_WARNING, "Pacemaker health check: UNHEALTHY");
+				DBGLOG(LOG_WARNING, "Pacemaker health check: UNHEALTHY");
 				pcmk_healthy = 0;
 				clock_gettime(CLOCK_MONOTONIC, &s->t_last);
 			} else {
@@ -626,7 +626,7 @@ void inquisitor_child(void)
 		} else if (sig == SIG_IO_FAIL) {
 			s = lookup_servant_by_pid(sinfo.si_pid);
 			if (s) {
-				cl_log(LOG_INFO, "Servant for %s requests to be disowned",
+				DBGLOG(LOG_INFO, "Servant for %s requests to be disowned",
 						s->devname);
 				cleanup_servant_by_pid(sinfo.si_pid);
 			}
@@ -634,7 +634,7 @@ void inquisitor_child(void)
 			s = lookup_servant_by_pid(sinfo.si_pid);
 			if (s) {
 				if (strcmp(s->devname, "pcmk") == 0) {
-					cl_log(LOG_INFO, "Pacemaker health check: OK");
+					DBGLOG(LOG_INFO, "Pacemaker health check: OK");
 					pcmk_healthy = 1;
 				};
 				clock_gettime(CLOCK_MONOTONIC, &s->t_last);
@@ -832,7 +832,7 @@ int messenger(const char *name, const char *msg)
 						&& WEXITSTATUS(status) == 0) {
 						DBGPRINT("exit with %d\n",
 								WEXITSTATUS(status));
-						cl_log(LOG_INFO, "Process %d succeeded.",
+						DBGLOG(LOG_INFO, "Process %d succeeded.",
 								(int)pid);
 						successful_delivery++;
 					} else {
