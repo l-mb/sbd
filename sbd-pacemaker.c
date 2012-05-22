@@ -1,8 +1,10 @@
 
 /* 
- * Copyright (C) 2004 Andrew Beekhof <andrew@beekhof.net>
  * Copyright (C) 2012 Lars Marowsky-Bree <lmb@suse.com>
  * 
+ * Based on crm_mon.c, which was:
+ * Copyright (C) 2004 Andrew Beekhof <andrew@beekhof.net>
+ *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
  * License as published by the Free Software Foundation; either
@@ -16,6 +18,17 @@
  * You should have received a copy of the GNU General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+
+/* TODO list:
+ *
+ * - Trying to shutdown a node if no devices are up will fail, since SBD
+ * currently uses a message via the disk to achieve this.
+ *
+ * - Shutting down cluster nodes while the majority of devices is down
+ * will eventually take the cluster below the quorum threshold, at which
+ * time the remaining cluster nodes will all immediately suicide.
+ *
  */
 
 #include "sbd.h"
@@ -43,8 +56,6 @@
 
 #include <crm/cib.h>
 #include <crm/pengine/status.h>
-
-/* GMainLoop *mainloop = NULL; */
 
 void clean_up(int rc);
 void crm_diff_update(const char *event, xmlNode * msg);
@@ -91,7 +102,6 @@ mon_cib_connection_destroy(gpointer user_data)
 
 /*
  * Mainloop signal handler.
- * TODO: Adjust for the signals SBD uses
  */
 static void
 mon_shutdown(int nsig)
@@ -141,25 +151,6 @@ cib_connect(gboolean full)
     return rc;
 }
 
-/* TODO: OMFG so hackish, just testing ;-) Bugs/deficiencies:
- *
- * This *really* should link against libcib.
- *
- * WARNING: During a transition, which may be perfectly okay, this query
- * *does not respond* and may timeout.  Whoops, this could trigger a
- * fail-over!
- *
- * Try to shutdown a node if too few devices are present will make
- * pacemaker disappear -> ka-boom
- *
- * When you try to shutdown a node and take the cluster below quorum
- * threshold of devices -> ka-boom
- *
- * You can't shutdown sbd at all anyway if no devices are present, since
- * that's the only way to pass the shutdown command to sbd right now ->
- * kaboom (should use a signal to the master process directly)
- */
-
 int
 servant_pcmk(const char *diskname, const void* argp)
 {
@@ -185,7 +176,6 @@ servant_pcmk(const char *diskname, const void* argp)
 		} while (exit_code == cib_connection);
 
 		if (exit_code != cib_ok) {
-			/* Connection to cluster failed: %s\n", cib_error2string(exit_code) */
 			clean_up(-exit_code);
 		}
 	}
