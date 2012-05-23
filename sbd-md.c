@@ -824,7 +824,7 @@ int messenger(const char *name, const char *msg)
 		}
 	}
 	if (quorum_write(successful_delivery)) {
-		cl_log(LOG_ERR, "Message successfully delivered.");
+		cl_log(LOG_INFO, "Message successfully delivered.");
 		return 0;
 	} else {
 		cl_log(LOG_ERR, "Message is not delivered via more then a half of devices");
