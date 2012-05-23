@@ -76,19 +76,19 @@ crm_trigger_t *refresh_trigger = NULL;
 static gboolean
 mon_timer_popped(gpointer data)
 {
-    int rc = cib_ok;
+	int rc = cib_ok;
 
-    if (timer_id > 0) {
-        g_source_remove(timer_id);
-    }
+	if (timer_id > 0) {
+		g_source_remove(timer_id);
+	}
 
-    rc = cib_connect(TRUE);
+	rc = cib_connect(TRUE);
 
-    if (rc != cib_ok) {
-        timer_id = g_timeout_add(reconnect_msec, mon_timer_popped, NULL);
-	notify_parent(0);
-    }
-    return FALSE;
+	if (rc != cib_ok) {
+		timer_id = g_timeout_add(reconnect_msec, mon_timer_popped, NULL);
+		notify_parent(0);
+	}
+	return FALSE;
 }
 
 static void
@@ -109,49 +109,48 @@ mon_cib_connection_destroy(gpointer user_data)
 static void
 mon_shutdown(int nsig)
 {
-    clean_up(0);
+	clean_up(0);
 }
 
 int
 cib_connect(gboolean full)
 {
-    int rc = cib_ok;
+	int rc = cib_ok;
 
-    CRM_CHECK(cib != NULL, return cib_missing);
+	CRM_CHECK(cib != NULL, return cib_missing);
 
-    if (cib->state != cib_connected_query && cib->state != cib_connected_command) {
+	if (cib->state != cib_connected_query && cib->state != cib_connected_command) {
 
-        rc = cib->cmds->signon(cib, crm_system_name, cib_query);
+		rc = cib->cmds->signon(cib, crm_system_name, cib_query);
 
-        if (rc != cib_ok) {
-            return rc;
-        }
+		if (rc != cib_ok) {
+			return rc;
+		}
 
-        current_cib = get_cib_copy(cib);
-        mon_refresh_state(NULL);
+		current_cib = get_cib_copy(cib);
+		mon_refresh_state(NULL);
 
-        if (full) {
-            if (rc == cib_ok) {
-                rc = cib->cmds->set_connection_dnotify(cib, mon_cib_connection_destroy);
-                if (rc == cib_NOTSUPPORTED) {
-                    /* Notification setup failed, won't be able to reconnect after failure */
-                    rc = cib_ok;
-                }
+		if (full) {
+			if (rc == cib_ok) {
+				rc = cib->cmds->set_connection_dnotify(cib, mon_cib_connection_destroy);
+				if (rc == cib_NOTSUPPORTED) {
+					/* Notification setup failed, won't be able to reconnect after failure */
+					rc = cib_ok;
+				}
+			}
 
-            }
+			if (rc == cib_ok) {
+				cib->cmds->del_notify_callback(cib, T_CIB_DIFF_NOTIFY, crm_diff_update);
+				rc = cib->cmds->add_notify_callback(cib, T_CIB_DIFF_NOTIFY, crm_diff_update);
+			}
 
-            if (rc == cib_ok) {
-                cib->cmds->del_notify_callback(cib, T_CIB_DIFF_NOTIFY, crm_diff_update);
-                rc = cib->cmds->add_notify_callback(cib, T_CIB_DIFF_NOTIFY, crm_diff_update);
-            }
-
-            if (rc != cib_ok) {
-                /* Notification setup failed, could not monitor CIB actions */
-                clean_up(-rc);
-            }
-        }
-    }
-    return rc;
+			if (rc != cib_ok) {
+				/* Notification setup failed, could not monitor CIB actions */
+				clean_up(-rc);
+			}
+		}
+	}
+	return rc;
 }
 
 int
@@ -282,92 +281,92 @@ notify_parent(int healthy)
 void
 crm_diff_update(const char *event, xmlNode * msg)
 {
-    int rc = -1;
-    long now = time(NULL);
-    const char *op = NULL;
-    unsigned int log_level = LOG_INFO;
+	int rc = -1;
+	long now = time(NULL);
+	const char *op = NULL;
+	unsigned int log_level = LOG_INFO;
 
-    xmlNode *diff = NULL;
-    xmlNode *cib_last = NULL;
+	xmlNode *diff = NULL;
+	xmlNode *cib_last = NULL;
 
-    if (msg == NULL) {
-        crm_err("NULL update");
-        return;
-    }
+	if (msg == NULL) {
+		crm_err("NULL update");
+		return;
+	}
 
-    crm_element_value_int(msg, F_CIB_RC, &rc);
-    op = crm_element_value(msg, F_CIB_OPERATION);
-    diff = get_message_xml(msg, F_CIB_UPDATE_RESULT);
+	crm_element_value_int(msg, F_CIB_RC, &rc);
+	op = crm_element_value(msg, F_CIB_OPERATION);
+	diff = get_message_xml(msg, F_CIB_UPDATE_RESULT);
 
-    if (rc < cib_ok) {
-        log_level = LOG_WARNING;
-        cl_log(log_level, "[%s] %s ABORTED: %s", event, op, cib_error2string(rc));
-        return;
-    }
+	if (rc < cib_ok) {
+		log_level = LOG_WARNING;
+		cl_log(log_level, "[%s] %s ABORTED: %s", event, op, cib_error2string(rc));
+		return;
+	}
 
-    if (current_cib != NULL) {
-        cib_last = current_cib;
-        current_cib = NULL;
-        rc = cib_process_diff(op, cib_force_diff, NULL, NULL, diff, cib_last, &current_cib, NULL);
+	if (current_cib != NULL) {
+		cib_last = current_cib;
+		current_cib = NULL;
+		rc = cib_process_diff(op, cib_force_diff, NULL, NULL, diff, cib_last, &current_cib, NULL);
 
-        if (rc != cib_ok) {
-            crm_debug("Update didn't apply, requesting full copy: %s", cib_error2string(rc));
-            free_xml(current_cib);
-            current_cib = NULL;
-        }
-    }
+		if (rc != cib_ok) {
+			crm_debug("Update didn't apply, requesting full copy: %s", cib_error2string(rc));
+			free_xml(current_cib);
+			current_cib = NULL;
+		}
+	}
 
-    if (current_cib == NULL) {
-        current_cib = get_cib_copy(cib);
-    }
+	if (current_cib == NULL) {
+		current_cib = get_cib_copy(cib);
+	}
 
-    if ((now - last_refresh) > (reconnect_msec / 1000)) {
-        /* Force a refresh */
-        mon_refresh_state(NULL);
-    } else {
-        mainloop_set_trigger(refresh_trigger);
-    }
-    free_xml(cib_last);
+	if ((now - last_refresh) > (reconnect_msec / 1000)) {
+		/* Force a refresh */
+		mon_refresh_state(NULL);
+	} else {
+		mainloop_set_trigger(refresh_trigger);
+	}
+	free_xml(cib_last);
 }
 
 gboolean
 mon_refresh_state(gpointer user_data)
 {
-    xmlNode *cib_copy = copy_xml(current_cib);
-    pe_working_set_t data_set;
+	xmlNode *cib_copy = copy_xml(current_cib);
+	pe_working_set_t data_set;
 
-    last_refresh = time(NULL);
+	last_refresh = time(NULL);
 
-    if (cli_config_update(&cib_copy, NULL, FALSE) == FALSE) {
-        if (cib) {
-            cib->cmds->signoff(cib);
-        }
-	/* TODO: Not good path, upgrade failed */
-        clean_up(1);
-        return FALSE;
-    }
+	if (cli_config_update(&cib_copy, NULL, FALSE) == FALSE) {
+		if (cib) {
+			cib->cmds->signoff(cib);
+		}
+		/* TODO: Not good path, upgrade failed */
+		clean_up(1);
+		return FALSE;
+	}
 
-    set_working_set_defaults(&data_set);
-    data_set.input = cib_copy;
-    cluster_status(&data_set);
+	set_working_set_defaults(&data_set);
+	data_set.input = cib_copy;
+	cluster_status(&data_set);
 
-    compute_status(&data_set);
+	compute_status(&data_set);
 
-    cleanup_calculations(&data_set);
-    return TRUE;
+	cleanup_calculations(&data_set);
+	return TRUE;
 }
 
 void
 clean_up(int rc)
 {
-    if (cib != NULL) {
-        cib->cmds->signoff(cib);
-        cib_delete(cib);
-        cib = NULL;
-    }
+	if (cib != NULL) {
+		cib->cmds->signoff(cib);
+		cib_delete(cib);
+		cib = NULL;
+	}
 
-    if (rc >= 0) {
-        exit(rc);
-    }
-    return;
+	if (rc >= 0) {
+		exit(rc);
+	}
+	return;
 }
