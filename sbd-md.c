@@ -647,7 +647,7 @@ void inquisitor_child(void)
 			if (strcmp(s->devname, "pcmk") == 0)
 				continue;
 
-			if (age < timeout_watchdog) {
+			if (age < (int)timeout_watchdog) {
 				good_servants++;
 				s->outdated = 0;
 			} else if (!s->outdated) {
@@ -672,9 +672,11 @@ void inquisitor_child(void)
 			watchdog_tickle();
 			clock_gettime(CLOCK_MONOTONIC, &t_last_tickle);
 		}
-
+		
+		/* Note that this can actually be negative, since we set
+		 * last_tickle after we set now. */
 		latency = t_now.tv_sec - t_last_tickle.tv_sec;
-		if (timeout_watchdog && (latency > timeout_watchdog)) {
+		if (timeout_watchdog && (latency > (int)timeout_watchdog)) {
 			if (!decoupled) {
 				/* We're still being watched by our
 				 * parent. We don't fence, but exit. */
@@ -692,7 +694,7 @@ void inquisitor_child(void)
 				cl_log(LOG_ERR, "SBD: DEBUG MODE: Would have fenced due to timeout!");
 			}
 		}
-		if (timeout_watchdog_warn && (latency > timeout_watchdog_warn)) {
+		if (timeout_watchdog_warn && (latency > (int)timeout_watchdog_warn)) {
 			cl_log(LOG_WARNING,
 			       "Latency: No liveness for %d s exceeds threshold of %d s (healthy servants: %d)",
 			       (int)latency, (int)timeout_watchdog_warn, good_servants);
