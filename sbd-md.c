@@ -647,7 +647,7 @@ void inquisitor_child(void)
 			if (strcmp(s->devname, "pcmk") == 0)
 				continue;
 
-			if (age < (int)timeout_watchdog) {
+			if (age < (int)(timeout_io+timeout_loop)) {
 				good_servants++;
 				s->outdated = 0;
 			} else if (!s->outdated) {
