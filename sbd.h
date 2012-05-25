@@ -143,7 +143,7 @@ void do_reset(void);
 void do_off(void);
 pid_t make_daemon(void);
 void maximize_priority(void);
-void get_uname(void);
+void sbd_get_uname(void);
 
 /* Tunable defaults: */
 extern unsigned long    timeout_watchdog;

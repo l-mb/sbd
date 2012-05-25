@@ -873,7 +873,7 @@ int main(int argc, char **argv, char **envp)
 	cl_log_enable_stderr(0);
 	cl_log_set_facility(LOG_DAEMON);
 
-	get_uname();
+	sbd_get_uname();
 
 	while ((c = getopt(argc, argv, "C:DPRTWZhvw:d:n:1:2:3:4:5:t:I:F:")) != -1) {
 		switch (c) {

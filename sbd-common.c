@@ -965,7 +965,7 @@ header_dump(struct sbd_context *st)
 }
 
 void
-get_uname(void)
+sbd_get_uname(void)
 {
 	struct utsname		uname_buf;
 	int i;
