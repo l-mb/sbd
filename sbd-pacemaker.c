@@ -127,6 +127,7 @@ mon_timer_notify(gpointer data)
 	/* TODO - do we really want to do this every loop interval? Lets
 	 * check how much CPU that takes ... */
 	if (1) {
+		free_xml(current_cib);
 		current_cib = get_cib_copy(cib);
 		mon_refresh_state(NULL);
 	} else {
