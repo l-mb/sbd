@@ -14,7 +14,7 @@ INCLUDE = -I/usr/include/pacemaker -I/usr/include/clplumbing \
 		-I${LIBDIR}/glib-2.0/include/
 
 LIBS	= $(GLIBLIB) -laio -lplumbgpl \
-	-lcrmcommon -lpe_status -lcib -lpe_rules -lcoroipcc
+	-lcrmcommon -lpe_status -lcib -lpe_rules -lcoroipcc -lcrmcluster
 
 all:	sbd
 

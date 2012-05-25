@@ -51,12 +51,14 @@
 #include <libgen.h>
 #include <sys/utsname.h>
 
+#include <crm_config.h>
 #include <crm/msg_xml.h>
 #include <crm/common/util.h>
 #include <crm/common/xml.h>
 #include <crm/common/ipc.h>
 #include <crm/common/mainloop.h>
-
+#include <crm/cluster/stack.h>
+#include <crm/common/cluster.h>
 #include <crm/cib.h>
 #include <crm/pengine/status.h>
 
@@ -71,8 +73,13 @@ int reconnect_msec = 5000;
 GMainLoop *mainloop = NULL;
 guint timer_id_reconnect = 0;
 guint timer_id_notify = 0;
+guint timer_id_ais = 0;
 
 int	pcmk_healthy = 0;
+
+enum cluster_type_e cluster_stack = pcmk_cluster_unknown;
+int local_id = 0;
+struct timespec t_last_quorum;
 
 cib_t *cib = NULL;
 xmlNode *current_cib = NULL;
@@ -130,6 +137,19 @@ mon_timer_notify(gpointer data)
 	return FALSE;
 }
 
+static gboolean
+mon_timer_ais(gpointer data)
+{
+	if (timer_id_ais > 0) {
+		g_source_remove(timer_id_ais);
+	}
+
+	send_ais_text(crm_class_quorum, NULL, TRUE, NULL, crm_msg_ais);
+
+	/* The timer is set in the response processing */
+	return FALSE;
+}
+
 /*
  * Mainloop signal handler.
  */
@@ -180,6 +200,35 @@ cib_connect(gboolean full)
 	return rc;
 }
 
+static void
+ais_membership_destroy(gpointer user_data)
+{
+	cl_log(LOG_ERR, "AIS connection terminated - corosync down?");
+	ais_fd_sync = -1;
+	/* TODO: Is recovery even worth it here? After all, this means
+	 * that corosync died ... */
+	exit(1);
+}
+
+static gboolean
+ais_membership_dispatch(AIS_Message * wrapper, char *data, int sender)
+{
+	switch (wrapper->header.id) {
+	case crm_class_quorum:
+		break;
+	default:
+		return TRUE;
+		break;
+	}
+
+	DBGLOG(LOG_INFO, "AIS quorum state: %d", (int)crm_have_quorum);
+	clock_gettime(CLOCK_MONOTONIC, &t_last_quorum);
+
+	timer_id_ais = g_timeout_add(timeout_loop * 1000, mon_timer_ais, NULL);
+
+	return TRUE;
+}
+
 int
 servant_pcmk(const char *diskname, const void* argp)
 {
@@ -192,6 +241,18 @@ servant_pcmk(const char *diskname, const void* argp)
 	/* We don't want any noisy crm messages */
 	set_crm_log_level(LOG_ERR);
 	
+	cluster_stack = get_cluster_type();
+
+	if (cluster_stack != pcmk_cluster_classic_ais) {
+		cl_log(LOG_ERR, "SBD currently only supports legacy AIS for quorum state poll");
+	}
+
+	while (!init_ais_connection_once
+		(ais_membership_dispatch, ais_membership_destroy, NULL, NULL, &local_id)) {
+		cl_log(LOG_INFO, "Waiting to sign in with AIS ...");
+		sleep(reconnect_msec / 1000);
+	}
+
 	if (current_cib == NULL) {
 		cib = cib_new();
 
@@ -201,7 +262,6 @@ servant_pcmk(const char *diskname, const void* argp)
 			if (exit_code != cib_ok) {
 				sleep(reconnect_msec / 1000);
 			}
-
 		} while (exit_code == cib_connection);
 
 		if (exit_code != cib_ok) {
@@ -215,6 +275,7 @@ servant_pcmk(const char *diskname, const void* argp)
 	mainloop_add_signal(SIGINT, mon_shutdown);
 	refresh_trigger = mainloop_add_trigger(G_PRIORITY_LOW, mon_refresh_state, NULL);
 	timer_id_notify = g_timeout_add(timeout_loop * 1000, mon_timer_notify, NULL);
+	timer_id_ais = g_timeout_add(timeout_loop * 1000, mon_timer_ais, NULL);
 
 	g_main_run(mainloop);
 	g_main_destroy(mainloop);
@@ -237,9 +298,11 @@ compute_status(pe_working_set_t * data_set)
 	static int	last_state = 0;
 	int		healthy = 0;
 	node_t *dc		= NULL;
+	struct timespec	t_now;
 
 	updates++;
 	dc = data_set->dc_node;
+	clock_gettime(CLOCK_MONOTONIC, &t_now);
 
 	if (dc == NULL) {
 		/* Means we don't know if we have quorum. Hrm. Probably needs to
@@ -249,12 +312,27 @@ compute_status(pe_working_set_t * data_set)
 		LOGONCE(1, LOG_INFO, "We don't have a DC right now.");
 		goto out;
 	} else {
-		const char *quorum = crm_element_value(data_set->input, XML_ATTR_HAVE_QUORUM);
+		int quorum_age;
+		const char *cib_quorum = crm_element_value(data_set->input, XML_ATTR_HAVE_QUORUM);
 
-		if (crm_is_true(quorum)) {
-			DBGLOG(LOG_INFO, "We have quorum!");
+		if (crm_is_true(cib_quorum)) {
+			DBGLOG(LOG_INFO, "CIB: We have quorum!");
 		} else {
-			LOGONCE(3, LOG_WARNING, "We do NOT have quorum!");
+			LOGONCE(3, LOG_WARNING, "CIB: We do NOT have quorum!");
+			goto out;
+		}
+		
+		quorum_age = t_now.tv_sec - t_last_quorum.tv_sec;
+		if (quorum_age > (int)(timeout_io+timeout_loop)) {
+			if (t_last_quorum.tv_sec != 0)
+				LOGONCE(2, LOG_WARNING, "AIS: Quorum outdated!");
+			goto out;
+		}
+
+		if (crm_have_quorum) {
+			DBGLOG(LOG_INFO, "AIS: We have quorum!");
+		} else {
+			LOGONCE(8, LOG_WARNING, "AIS: We do NOT have quorum!");
 			goto out;
 		}
 	}
@@ -405,3 +483,4 @@ clean_up(int rc)
 	}
 	return;
 }
+
