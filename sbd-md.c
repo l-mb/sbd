@@ -644,17 +644,24 @@ void inquisitor_child(void)
 			if (!s->t_last.tv_sec)
 				continue;
 			
-			if (strcmp(s->devname, "pcmk") == 0)
-				continue;
-
 			if (age < (int)(timeout_io+timeout_loop)) {
-				good_servants++;
+				if (strcmp(s->devname, "pcmk") != 0) {
+					good_servants++;
+				}
 				s->outdated = 0;
 			} else if (!s->outdated) {
-				s->outdated = 1;
-				if (!s->restart_blocked)
+				if (strcmp(s->devname, "pcmk") == 0) {
+					/* If the state is outdated, we
+					 * override the last reported
+					 * state */
+					pcmk_healthy = 0;
+					cl_log(LOG_WARNING, "Pacemaker state outdated (age: %d)",
+						age);
+				} else if (!s->restart_blocked) {
 					cl_log(LOG_WARNING, "Servant for %s outdated (age: %d)",
 						s->devname, age);
+				}
+				s->outdated = 1;
 			}
 		}
 
