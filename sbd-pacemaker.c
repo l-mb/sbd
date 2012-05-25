@@ -115,8 +115,8 @@ mon_timer_notify(gpointer data)
 	}
 
 	notify_parent();
-	
-	timer_id_notify = g_timeout_add(timeout_loop, mon_timer_notify, NULL);
+
+	timer_id_notify = g_timeout_add(timeout_loop * 1000, mon_timer_notify, NULL);
 	return FALSE;
 }
 
@@ -204,7 +204,7 @@ servant_pcmk(const char *diskname, const void* argp)
 	mainloop_add_signal(SIGTERM, mon_shutdown);
 	mainloop_add_signal(SIGINT, mon_shutdown);
 	refresh_trigger = mainloop_add_trigger(G_PRIORITY_LOW, mon_refresh_state, NULL);
-	timer_id_notify = g_timeout_add(timeout_loop, mon_timer_notify, NULL);
+	timer_id_notify = g_timeout_add(timeout_loop * 1000, mon_timer_notify, NULL);
 
 	g_main_run(mainloop);
 	g_main_destroy(mainloop);
