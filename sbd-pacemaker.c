@@ -61,11 +61,15 @@ void clean_up(int rc);
 void crm_diff_update(const char *event, xmlNode * msg);
 gboolean mon_refresh_state(gpointer user_data);
 int cib_connect(gboolean full);
-void notify_parent(int healthy);
+void set_pcmk_health(int healthy);
+void notify_parent(void);
 
 int reconnect_msec = 5000;
 GMainLoop *mainloop = NULL;
-guint timer_id = 0;
+guint timer_id_reconnect = 0;
+guint timer_id_notify = 0;
+
+int	pcmk_healthy = 0;
 
 cib_t *cib = NULL;
 xmlNode *current_cib = NULL;
@@ -78,15 +82,15 @@ mon_timer_popped(gpointer data)
 {
 	int rc = cib_ok;
 
-	if (timer_id > 0) {
-		g_source_remove(timer_id);
+	if (timer_id_reconnect > 0) {
+		g_source_remove(timer_id_reconnect);
 	}
 
 	rc = cib_connect(TRUE);
 
 	if (rc != cib_ok) {
-		timer_id = g_timeout_add(reconnect_msec, mon_timer_popped, NULL);
-		notify_parent(0);
+		timer_id_reconnect = g_timeout_add(reconnect_msec, mon_timer_popped, NULL);
+		set_pcmk_health(0);
 	}
 	return FALSE;
 }
@@ -95,12 +99,25 @@ static void
 mon_cib_connection_destroy(gpointer user_data)
 {
 	if (cib) {
-		notify_parent(0);
+		set_pcmk_health(0);
 		/* Reconnecting */
 		cib->cmds->signoff(cib);
-		timer_id = g_timeout_add(reconnect_msec, mon_timer_popped, NULL);
+		timer_id_reconnect = g_timeout_add(reconnect_msec, mon_timer_popped, NULL);
 	}
 	return;
+}
+
+static gboolean
+mon_timer_notify(gpointer data)
+{
+	if (timer_id_notify > 0) {
+		g_source_remove(timer_id_notify);
+	}
+
+	notify_parent();
+	
+	timer_id_notify = g_timeout_add(timeout_loop, mon_timer_notify, NULL);
+	return FALSE;
 }
 
 /*
@@ -187,6 +204,7 @@ servant_pcmk(const char *diskname, const void* argp)
 	mainloop_add_signal(SIGTERM, mon_shutdown);
 	mainloop_add_signal(SIGINT, mon_shutdown);
 	refresh_trigger = mainloop_add_trigger(G_PRIORITY_LOW, mon_refresh_state, NULL);
+	timer_id_notify = g_timeout_add(timeout_loop, mon_timer_notify, NULL);
 
 	g_main_run(mainloop);
 	g_main_destroy(mainloop);
@@ -248,13 +266,20 @@ compute_status(pe_working_set_t * data_set)
 	}
 
 out:
-	notify_parent(healthy);
+	set_pcmk_health(healthy);
 
 	return 0;
 }
 
 void
-notify_parent(int healthy)
+set_pcmk_health(int healthy)
+{
+	pcmk_healthy = healthy;
+	notify_parent();
+}
+
+void
+notify_parent(void)
 {
 	pid_t		ppid;
 	union sigval	signal_value;
@@ -269,7 +294,7 @@ notify_parent(int healthy)
 		do_reset();
 	}
 
-	if (healthy) {
+	if (pcmk_healthy) {
 		DBGLOG(LOG_INFO, "Notifying parent: healthy");
 		sigqueue(ppid, SIG_LIVENESS, signal_value);
 	} else {
