@@ -29,6 +29,9 @@
  * will eventually take the cluster below the quorum threshold, at which
  * time the remaining cluster nodes will all immediately suicide.
  *
+ * - With the CIB refreshed every timeout_loop seconds, do we still need
+ * to watch for CIB update notifications or can that be removed?
+ *
  */
 
 #include "sbd.h"
@@ -114,7 +117,14 @@ mon_timer_notify(gpointer data)
 		g_source_remove(timer_id_notify);
 	}
 
-	notify_parent();
+	/* TODO - do we really want to do this every loop interval? Lets
+	 * check how much CPU that takes ... */
+	if (1) {
+		current_cib = get_cib_copy(cib);
+		mon_refresh_state(NULL);
+	} else {
+		notify_parent();
+	}
 
 	timer_id_notify = g_timeout_add(timeout_loop * 1000, mon_timer_notify, NULL);
 	return FALSE;
