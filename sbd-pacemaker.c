@@ -57,8 +57,10 @@
 #include <crm/common/xml.h>
 #include <crm/common/ipc.h>
 #include <crm/common/mainloop.h>
+#ifdef CHECK_AIS
 #include <crm/cluster/stack.h>
 #include <crm/common/cluster.h>
+#endif
 #include <crm/cib.h>
 #include <crm/pengine/status.h>
 
@@ -73,13 +75,15 @@ int reconnect_msec = 5000;
 GMainLoop *mainloop = NULL;
 guint timer_id_reconnect = 0;
 guint timer_id_notify = 0;
-guint timer_id_ais = 0;
 
 int	pcmk_healthy = 0;
 
+#ifdef CHECK_AIS
+guint timer_id_ais = 0;
 enum cluster_type_e cluster_stack = pcmk_cluster_unknown;
 int local_id = 0;
 struct timespec t_last_quorum;
+#endif
 
 cib_t *cib = NULL;
 xmlNode *current_cib = NULL;
@@ -138,19 +142,6 @@ mon_timer_notify(gpointer data)
 	return FALSE;
 }
 
-static gboolean
-mon_timer_ais(gpointer data)
-{
-	if (timer_id_ais > 0) {
-		g_source_remove(timer_id_ais);
-	}
-
-	send_ais_text(crm_class_quorum, NULL, TRUE, NULL, crm_msg_ais);
-
-	/* The timer is set in the response processing */
-	return FALSE;
-}
-
 /*
  * Mainloop signal handler.
  */
@@ -201,6 +192,20 @@ cib_connect(gboolean full)
 	return rc;
 }
 
+#ifdef CHECK_AIS
+static gboolean
+mon_timer_ais(gpointer data)
+{
+	if (timer_id_ais > 0) {
+		g_source_remove(timer_id_ais);
+	}
+
+	send_ais_text(crm_class_quorum, NULL, TRUE, NULL, crm_msg_ais);
+
+	/* The timer is set in the response processing */
+	return FALSE;
+}
+
 static void
 ais_membership_destroy(gpointer user_data)
 {
@@ -229,6 +234,7 @@ ais_membership_dispatch(AIS_Message * wrapper, char *data, int sender)
 
 	return TRUE;
 }
+#endif
 
 int
 servant_pcmk(const char *diskname, const void* argp)
@@ -241,7 +247,8 @@ servant_pcmk(const char *diskname, const void* argp)
 
 	/* We don't want any noisy crm messages */
 	set_crm_log_level(LOG_ERR);
-	
+
+#ifdef CHECK_AIS
 	cluster_stack = get_cluster_type();
 
 	if (cluster_stack != pcmk_cluster_classic_ais) {
@@ -253,6 +260,7 @@ servant_pcmk(const char *diskname, const void* argp)
 		cl_log(LOG_INFO, "Waiting to sign in with AIS ...");
 		sleep(reconnect_msec / 1000);
 	}
+#endif
 
 	if (current_cib == NULL) {
 		cib = cib_new();
@@ -276,7 +284,9 @@ servant_pcmk(const char *diskname, const void* argp)
 	mainloop_add_signal(SIGINT, mon_shutdown);
 	refresh_trigger = mainloop_add_trigger(G_PRIORITY_LOW, mon_refresh_state, NULL);
 	timer_id_notify = g_timeout_add(timeout_loop * 1000, mon_timer_notify, NULL);
+#ifdef CHECK_AIS
 	timer_id_ais = g_timeout_add(timeout_loop * 1000, mon_timer_ais, NULL);
+#endif
 
 	g_main_run(mainloop);
 	g_main_destroy(mainloop);
@@ -313,7 +323,6 @@ compute_status(pe_working_set_t * data_set)
 		LOGONCE(1, LOG_INFO, "We don't have a DC right now.");
 		goto out;
 	} else {
-		int quorum_age;
 		const char *cib_quorum = crm_element_value(data_set->input, XML_ATTR_HAVE_QUORUM);
 
 		if (crm_is_true(cib_quorum)) {
@@ -322,21 +331,25 @@ compute_status(pe_working_set_t * data_set)
 			LOGONCE(3, LOG_WARNING, "CIB: We do NOT have quorum!");
 			goto out;
 		}
-		
-		quorum_age = t_now.tv_sec - t_last_quorum.tv_sec;
-		if (quorum_age > (int)(timeout_io+timeout_loop)) {
-			if (t_last_quorum.tv_sec != 0)
-				LOGONCE(2, LOG_WARNING, "AIS: Quorum outdated!");
-			goto out;
-		}
 
-		if (crm_have_quorum) {
-			DBGLOG(LOG_INFO, "AIS: We have quorum!");
-		} else {
-			LOGONCE(8, LOG_WARNING, "AIS: We do NOT have quorum!");
-			goto out;
-		}
 	}
+
+#ifdef CHECK_AIS
+	int quorum_age = t_now.tv_sec - t_last_quorum.tv_sec;
+
+	if (quorum_age > (int)(timeout_io+timeout_loop)) {
+		if (t_last_quorum.tv_sec != 0)
+			LOGONCE(2, LOG_WARNING, "AIS: Quorum outdated!");
+		goto out;
+	}
+
+	if (crm_have_quorum) {
+		DBGLOG(LOG_INFO, "AIS: We have quorum!");
+	} else {
+		LOGONCE(8, LOG_WARNING, "AIS: We do NOT have quorum!");
+		goto out;
+	}
+#endif
 
 	node_t *node = pe_find_node(data_set->nodes, local_uname);
 
