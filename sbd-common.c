@@ -824,7 +824,10 @@ sysrq_init(void)
 		cl_perror("cannot open /proc/sys/kernel/sysrq for read.");
 		return;
 	}
-	fscanf(procf, "%d", &c);
+	if (fscanf(procf, "%d", &c) != 1) {
+		cl_perror("Parsing sysrq failed");
+		c = 0;
+	}
 	fclose(procf);
 	if (c == 1)
 		return;
@@ -833,7 +836,7 @@ sysrq_init(void)
 	c |= 136; 
 	procf = fopen("/proc/sys/kernel/sysrq", "w");
 	if (!procf) {
-		printf("cannot open /proc/sys/kernel/sysrq for write\n");
+		cl_perror("cannot open /proc/sys/kernel/sysrq for writing");
 		return;
 	}
 	fprintf(procf, "%d", c);
@@ -931,6 +934,7 @@ make_daemon(void)
 
 	/* This is the child; ensure privileges have not been lost. */
 	maximize_priority();
+	sysrq_init();
 
 	umask(022);
 	close(0);
