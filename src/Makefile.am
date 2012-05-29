@@ -1,4 +1,4 @@
-AM_CFLAGS = -D_GNU_SOURCE
+AM_CFLAGS = -D_GNU_SOURCE -DCHECK_AIS
 AM_CPPFLAGS =  -I$(includedir)/pacemaker -I$(includedir)/clplumbing \
 		-I$(includedir)/heartbeat \
 		$(glib_CFLAGS) \
