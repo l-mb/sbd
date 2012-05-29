@@ -306,8 +306,8 @@ char2cmd(const char cmd)
 	}
 }
 
-int
-sector_write(struct sbd_context *st, int sector, void *data)
+static int
+sector_io(struct sbd_context *st, int sector, void *data, int rw)
 {
 	struct timespec	timeout;
 	struct io_event event;
@@ -318,9 +318,14 @@ sector_write(struct sbd_context *st, int sector, void *data)
 	timeout.tv_nsec = 0;
 
 	memset(&st->io, 0, sizeof(struct iocb));
-	io_prep_pwrite(&st->io, st->devfd, data, sector_size, sector_size * sector);
+	if (rw) {
+		io_prep_pwrite(&st->io, st->devfd, data, sector_size, sector_size * sector);
+	} else {
+		io_prep_pread(&st->io, st->devfd, data, sector_size, sector_size * sector);
+	}
+
 	if (io_submit(st->ioctx, 1, ios) != 1) {
-		cl_log(LOG_ERR, "Failed to submit write IO request!");
+		cl_log(LOG_ERR, "Failed to submit IO request! (rw=%d)", rw);
 		return -1;
 	}
 
@@ -328,13 +333,13 @@ sector_write(struct sbd_context *st, int sector, void *data)
 	r = io_getevents(st->ioctx, 1L, 1L, &event, &timeout);
 
 	if (r < 0 ) {
-		cl_log(LOG_ERR, "Failed to retrieve IO events (write)");
+		cl_log(LOG_ERR, "Failed to retrieve IO events (rw=%d)", rw);
 		return -1;
 	} else if (r < 1L) {
-		cl_log(LOG_INFO, "Cancelling write IO request due to timeout");
+		cl_log(LOG_INFO, "Cancelling IO request due to timeout (rw=%d)", rw);
 		r = io_cancel(st->ioctx, ios[0], &event);
 		if (r) {
-			DBGLOG(LOG_INFO, "Could not cancel IO request.");
+			DBGLOG(LOG_INFO, "Could not cancel IO request (rw=%d)", rw);
 			/* Doesn't really matter, debugging information.
 			 */
 		}
@@ -345,53 +350,21 @@ sector_write(struct sbd_context *st, int sector, void *data)
 	if (event.res == sector_size) {
 		return 0;
 	} else {
-		cl_log(LOG_ERR, "Short write");
+		cl_log(LOG_ERR, "Short IO (rw=%d)", rw);
 		return -1;
 	}
 }
 
 int
+sector_write(struct sbd_context *st, int sector, void *data)
+{
+	return sector_io(st, sector, data, 1);
+}
+
+int
 sector_read(struct sbd_context *st, int sector, void *data)
 {
-	struct timespec	timeout;
-	struct io_event event;
-	struct iocb	*ios[1] = { &st->io };
-	long		r;
-
-	timeout.tv_sec  = timeout_io;
-	timeout.tv_nsec = 0;
-
-	memset(&st->io, 0, sizeof(struct iocb));
-	io_prep_pread(&st->io, st->devfd, data, sector_size, sector_size * sector);
-	if (io_submit(st->ioctx, 1, ios) != 1) {
-		cl_log(LOG_ERR, "Failed to submit read IO request!");
-		return -1;
-	}
-
-	errno = 0;
-	r = io_getevents(st->ioctx, 1L, 1L, &event, &timeout);
-
-	if (r < 0 ) {
-		cl_log(LOG_ERR, "Failed to retrieve IO events");
-		return -1;
-	} else if (r < 1L) {
-		cl_log(LOG_INFO, "Cancelling IO request due to timeout");
-		r = io_cancel(st->ioctx, ios[0], &event);
-		if (r) {
-			DBGLOG(LOG_INFO, "Could not cancel IO request.");
-			/* Doesn't really matter, debugging information.
-			 */
-		}
-		return -1;
-	}
-	
-	/* IO is happy */
-	if (event.res == sector_size) {
-		return 0;
-	} else {
-		cl_log(LOG_ERR, "Short read");
-		return -1;
-	}
+	return sector_io(st, sector, data, 0);
 }
 
 int
