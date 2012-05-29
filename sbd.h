@@ -116,13 +116,13 @@ void close_device(struct sbd_context *st);
 signed char cmd2char(const char *cmd);
 void * sector_alloc(void);
 const char* char2cmd(const char cmd);
-int sector_write(struct sbd_context *st, int sector, const void *data);
+int sector_write(struct sbd_context *st, int sector, void *data);
 int sector_read(struct sbd_context *st, int sector, void *data);
 int slot_read(struct sbd_context *st, int slot, struct sector_node_s *s_node);
-int slot_write(struct sbd_context *st, int slot, const struct sector_node_s *s_node);
-int mbox_write(struct sbd_context *st, int mbox, const struct sector_mbox_s *s_mbox);
+int slot_write(struct sbd_context *st, int slot, struct sector_node_s *s_node);
+int mbox_write(struct sbd_context *st, int mbox, struct sector_mbox_s *s_mbox);
 int mbox_read(struct sbd_context *st, int mbox, struct sector_mbox_s *s_mbox);
-int mbox_write_verify(struct sbd_context *st, int mbox, const struct sector_mbox_s *s_mbox);
+int mbox_write_verify(struct sbd_context *st, int mbox, struct sector_mbox_s *s_mbox);
 /* After a call to header_write(), certain data fields will have been
  * converted to on-disk byte-order; the header should not be accessed
  * afterwards anymore! */

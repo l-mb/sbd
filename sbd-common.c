@@ -307,18 +307,47 @@ char2cmd(const char cmd)
 }
 
 int
-sector_write(struct sbd_context *st, int sector, const void *data)
+sector_write(struct sbd_context *st, int sector, void *data)
 {
-	if (lseek(st->devfd, sector_size*sector, 0) < 0) {
-		cl_perror("sector_write: lseek() failed");
+	struct timespec	timeout;
+	struct io_event event;
+	struct iocb	*ios[1] = { &st->io };
+	long		r;
+
+	timeout.tv_sec  = timeout_io;
+	timeout.tv_nsec = 0;
+
+	memset(&st->io, 0, sizeof(struct iocb));
+	io_prep_pwrite(&st->io, st->devfd, data, sector_size, sector_size * sector);
+	if (io_submit(st->ioctx, 1, ios) != 1) {
+		cl_log(LOG_ERR, "Failed to submit write IO request!");
 		return -1;
 	}
 
-	if (write(st->devfd, data, sector_size) <= 0) {
-		cl_perror("sector_write: write_sector() failed");
+	errno = 0;
+	r = io_getevents(st->ioctx, 1L, 1L, &event, &timeout);
+
+	if (r < 0 ) {
+		cl_log(LOG_ERR, "Failed to retrieve IO events (write)");
+		return -1;
+	} else if (r < 1L) {
+		cl_log(LOG_INFO, "Cancelling write IO request due to timeout");
+		r = io_cancel(st->ioctx, ios[0], &event);
+		if (r) {
+			DBGLOG(LOG_INFO, "Could not cancel IO request.");
+			/* Doesn't really matter, debugging information.
+			 */
+		}
 		return -1;
 	}
-	return(0);
+	
+	/* IO is happy */
+	if (event.res == sector_size) {
+		return 0;
+	} else {
+		cl_log(LOG_ERR, "Short write");
+		return -1;
+	}
 }
 
 int
@@ -335,7 +364,7 @@ sector_read(struct sbd_context *st, int sector, void *data)
 	memset(&st->io, 0, sizeof(struct iocb));
 	io_prep_pread(&st->io, st->devfd, data, sector_size, sector_size * sector);
 	if (io_submit(st->ioctx, 1, ios) != 1) {
-		cl_log(LOG_ERR, "Failed to submit IO request!");
+		cl_log(LOG_ERR, "Failed to submit read IO request!");
 		return -1;
 	}
 
@@ -372,13 +401,13 @@ slot_read(struct sbd_context *st, int slot, struct sector_node_s *s_node)
 }
 
 int
-slot_write(struct sbd_context *st, int slot, const struct sector_node_s *s_node)
+slot_write(struct sbd_context *st, int slot, struct sector_node_s *s_node)
 {
 	return sector_write(st, SLOT_TO_SECTOR(slot), s_node);
 }
 
 int
-mbox_write(struct sbd_context *st, int mbox, const struct sector_mbox_s *s_mbox)
+mbox_write(struct sbd_context *st, int mbox, struct sector_mbox_s *s_mbox)
 {
 	return sector_write(st, MBOX_TO_SECTOR(mbox), s_mbox);
 }
@@ -390,7 +419,7 @@ mbox_read(struct sbd_context *st, int mbox, struct sector_mbox_s *s_mbox)
 }
 
 int
-mbox_write_verify(struct sbd_context *st, int mbox, const struct sector_mbox_s *s_mbox)
+mbox_write_verify(struct sbd_context *st, int mbox, struct sector_mbox_s *s_mbox)
 {
 	void *data;
 	int rc = 0;
