@@ -220,6 +220,7 @@ int servant(const char *diskname, const void* argp)
 	sigset_t servant_masks;
 	struct sbd_context *st;
 	pid_t ppid;
+	const struct servants_list_item *s = argp;
 
 	if (!diskname) {
 		cl_log(LOG_ERR, "Empty disk name %s.", diskname);
@@ -258,10 +259,13 @@ int servant(const char *diskname, const void* argp)
 	DBGLOG(LOG_INFO, "Monitoring slot %d on disk %s", mbox, diskname);
 	set_proc_title("sbd: watcher: %s - slot: %d", diskname, mbox);
 
-	s_mbox = sector_alloc();
-	if (mbox_write(st, mbox, s_mbox) < 0) {
-		rc = -1;
-		goto out;
+	if (s->zero_mbox) {
+		DBGLOG(LOG_INFO, "First servant start - zeroing inbox");
+		s_mbox = sector_alloc();
+		if (mbox_write(st, mbox, s_mbox) < 0) {
+			rc = -1;
+			goto out;
+		}
 	}
 
 	memset(&signal_value, 0, sizeof(signal_value));
@@ -355,6 +359,8 @@ void recruit_servant(const char *devname, pid_t pid)
 	memset(newbie, 0, sizeof(*newbie));
 	newbie->devname = strdup(devname);
 	newbie->pid = pid;
+	/* Newly allocated servants should try to zero the mbox once */
+	newbie->zero_mbox = 1;
 
 	if (!s) {
 		servants_leader = newbie;
@@ -424,7 +430,7 @@ void servant_start(struct servants_list_item *s)
 	} else {
 		DBGLOG(LOG_INFO, "Starting servant for device %s",
 				s->devname);
-		s->pid = assign_servant(s->devname, servant, NULL);
+		s->pid = assign_servant(s->devname, servant, s);
 	}
 
 	clock_gettime(CLOCK_MONOTONIC, &s->t_started);
@@ -620,8 +626,11 @@ void inquisitor_child(void)
 					}
 					pcmk_healthy = 1;
 				};
+				/* After the first success, we should
+				 * never attempt to zero the mbox again
+				 */
+				s->zero_mbox = 0;
 				clock_gettime(CLOCK_MONOTONIC, &s->t_last);
-
 			}
 		} else if (sig == SIG_TEST) {
 		} else if (sig == SIGUSR1) {
