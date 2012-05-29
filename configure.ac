@@ -50,7 +50,7 @@ fi
 
 
 dnl The Makefiles and shell scripts we output
-AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile agent/Makefile])
 
 dnl Now process the entire list of files added by previous 
 dnl  calls to AC_CONFIG_FILES()
