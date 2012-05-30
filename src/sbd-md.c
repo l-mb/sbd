@@ -545,6 +545,7 @@ void inquisitor_child(void)
 	int exiting = 0;
 	int decoupled = 0;
 	int pcmk_healthy = 0;
+	int pcmk_override = 0;
 	time_t latency;
 	struct timespec t_last_tickle, t_now;
 	struct servants_list_item* s;
@@ -683,6 +684,15 @@ void inquisitor_child(void)
 				} else {
 					decoupled = 1;
 				}
+			}
+
+			if (!quorum_read(good_servants)) {
+				if (!pcmk_override) {
+					cl_log(LOG_WARNING, "Majority of devices lost - surviving on pacemaker");
+					pcmk_override = 1; /* Just to ensure the message is only logged once */
+				}
+			} else {
+				pcmk_override = 0;
 			}
 
 			watchdog_tickle();
