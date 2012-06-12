@@ -259,9 +259,9 @@ int servant(const char *diskname, const void* argp)
 	DBGLOG(LOG_INFO, "Monitoring slot %d on disk %s", mbox, diskname);
 	set_proc_title("sbd: watcher: %s - slot: %d", diskname, mbox);
 
+	s_mbox = sector_alloc();
 	if (s->zero_mbox) {
 		DBGLOG(LOG_INFO, "First servant start - zeroing inbox");
-		s_mbox = sector_alloc();
 		if (mbox_write(st, mbox, s_mbox) < 0) {
 			rc = -1;
 			goto out;
