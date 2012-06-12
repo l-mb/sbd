@@ -344,13 +344,18 @@ sector_io(struct sbd_context *st, int sector, void *data, int rw)
 			 */
 		}
 		return -1;
+	} else if (r > 1L) {
+		cl_log(LOG_ERR, "More than one IO was returned (r=%lld)", r);
+		return -1;
 	}
+
 	
 	/* IO is happy */
 	if (event.res == sector_size) {
 		return 0;
 	} else {
-		cl_log(LOG_ERR, "Short IO (rw=%d)", rw);
+		cl_log(LOG_ERR, "Short IO (rw=%d, res=%lld, sector_size=%lld)",
+				rw, event.res, sector_size);
 		return -1;
 	}
 }
