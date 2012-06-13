@@ -1,0 +1,326 @@
+.TH sbd 7 "29 Mar 2012" "" "cluster-glue"
+.\"
+.SH NAME
+sbd \- Stonith Block Device
+.\"
+.SH DESCRIPTION
+.br
+\fB* Data Protection\fR
+
+The SLE HA cluster stack's highest priority is protecting the integrity
+of data. This is achieved by preventing uncoordinated concurrent access
+to data storage - such as mounting an ext3 file system more than once in
+the cluster, but also preventing OCFS2 from being mounted if
+coordination with other cluster nodes is not available. In a
+well-functioning cluster, Pacemaker will detect if resources are active
+beyond their concurrency limits and initiate recovery; further, its
+policy engine will never exceed these limitations.
+
+However, network partitioning or software malfunction could potentially
+cause scenarios where several coordinators are elected. If this
+so-called split brain scenario were allowed to unfold, data corruption
+might occur. Hence, several layers of protection have been added to the
+cluster stack to mitigate this.
+
+IO fencing/STONITH is the primary component contributing to this goal,
+since they ensure that, prior to storage activation, all other access is
+terminated; cLVM2 exclusive activation or OCFS2 file locking support are
+other mechanisms, protecting against administrative or application
+faults. Combined appropriately for your setup, these can reliably
+prevent split-brain scenarios from causing harm.
+
+This chapter describes an IO fencing mechanism that leverages the
+storage itself, following by a description of an additional layer of
+protection to ensure exclusive storage access. These two mechanisms can
+even be combined for higher levels of protection.
+.\"
+.P
+\fB* Storage-based Fencing\fR
+
+In scenarios where shared storage is used one can
+leverage said shared storage for very reliable I/O fencing and avoidance
+of split-brain scenarios.
+
+This mechanism has been used successfully with the Novell Cluster Suite
+and is also available in a similar fashion for the SLE HA 11 product
+using the "external/sbd" STONITH agent.
+
+In an environment where all nodes have access to shared storage, a small
+partition is formated for use with SBD. The sbd daemon, once
+configured, is brought online on each node before the rest of the
+cluster stack is started, and terminated only after all other cluster
+components have been shut down - ensuring that cluster resources are
+never activated without SBD supervision.
+
+The daemon automatically allocates one of the message slots on the
+partition to itself, and constantly monitors it for messages to itself.
+Upon receipt of a message, the daemon immediately complies with the
+request, such as initiating a power-off or reboot cycle for fencing.
+
+The daemon also constantly monitors connectivity to the storage device,
+and commits suicide in case the partition becomes unreachable,
+guaranteeing that it is not disconnected from fencing message. (If the
+cluster data resides on the same logical unit in a different partition,
+this is not an additional point of failure; the work-load would
+terminate anyway if the storage connectivity was lost.)
+
+SBD supports one, two, or three devices. This affects the operation
+of SBD as follows:
+
+.B ** One device
+
+In its most simple implementation, you use one device only. (Older
+versions of SBD did not support more.) This is appropriate for clusters
+where all your data is on the same shared storage (with internal redundancy)
+anyway; the SBD device does not introduce an additional single point of
+failure then.
+
+If the SBD device is not accessible, the daemon will fail to start and
+inhibit openais startup. 
+
+.B ** Two devices
+
+This configuration is a trade-off, primarily aimed at environments where
+host-based mirroring is used, but no third storage device is available.
+
+SBD will not commit suicide if it loses access to one mirror leg; this
+allows the cluster to continue to function even in the face of one outage.
+
+However, SBD will not fence the other side while only one mirror leg is
+available, since it does not have enough knowledge to detect an asymmetric
+split of the storage. So it will not be able to automatically tolerate a
+second failure while one of the storage arrays is down. (Though you
+can use the appropriate crm command to acknowledge the fence manually.)
+
+If devices are configured different, the cluster will not start.
+If no header is on the devices, the cluster starts and keeps looking for a
+valid header.
+
+.B ** Three devices
+
+In this most reliable configuration, SBD will only commit suicide if more
+than one device is lost; hence, this configuration is resilient against
+one device outages (be it due to failures or maintenance). Fencing
+messages can be successfully relayed if at least two devices remain up.
+
+If one device out of three is completely missing at cluster start, the cluster
+will start. If one device out of three is available, but mis-configured, the
+cluster will not start. If two devices are completely missing, the cluster
+will also not start.
+
+This configuration is appropriate for more complex scenarios where storage
+is not confined to a single array.
+
+Host-based mirroring solutions could have one SBD per mirror leg (not
+mirrored itself), and an additional tie-breaker on iSCSI. 
+
+.\"
+.P
+\fB* Pre-Requisites\fR
+
+The environment must have shared storage reachable by all nodes.
+You must dedicate a small partition of each as the SBD device. 
+This shared storage segment must not make use of host-based RAID, cLVM2,
+nor DRBD.
+
+The SBD device can be connected via Fibre Channel, Fibre Channel over
+Eterhnet, or even iSCSI. Thus, an iSCSI target can become a sort-of
+network-based quorum server; the advantage is that it does not require
+a smart host at your third location, just block storage.
+
+However, using storage-based RAID and multipathing is recommended for
+increased reliability.
+.\"
+.P
+\fB* SBD Partition\fR
+
+It is recommended to create a tiny partition at the start of the device.
+In the rest of this text, this is referred to as "/dev/<SBD>" or "/dev/<SBD_n>",
+please substitute your actual pathnames
+(f.e. "/dev/disk/by-id/scsi-1494554000000000036363600000000000000000000000000-part1")
+for this below.
+
+The size of the SBD device depends on the block size of the underlying
+device. SBD uses 255 slots. Thus, 1MB is fine on plain SCSI devices and
+SAN storages with 512 byte blocks. On the IBM s390x architecture disks could
+have larger block sizes, as 4096 bytes. Therefor 4MB or more are needed there.
+
+After having made very sure that this is indeed the device you want to
+use, and does not hold any data you need - as the sbd command will
+overwrite it without further requests for confirmation -, initialize the
+sbd device.
+
+If your SBD device resides on a multipath group, you may need to adjust
+the timeouts sbd uses, as MPIO's path down detection can cause some
+latency: after the msgwait timeout, the message is assumed to have been
+delivered to the node. For multipath, this should be the time required
+for MPIO to detect a path failure and switch to the next path. You may
+have to test this in your environment. The node will perform suicide if
+it has not updated the watchdog timer fast enough; the watchdog timeout
+must be shorter than the msgwait timeout - half the value is a good
+estimate. This can be specified when the SBD device is initialized.
+.\"
+.P
+\fB* Testing and Starting the SBD Daemon\fR
+
+The sbd daemon is a critical piece of the cluster stack. It must always
+be running when the cluster stack is up, or even when the rest of it has
+crashed, so that it can be fenced.
+
+The openais init script starts and stops SBD if configured; add the
+following to /etc/sysconfig/sbd:
+
+===
+.br
+#/etc/sysconfig/sbd
+.br
+# SBD devices (no trailing ";"):
+.br
+SBD_DEVICE="/dev/<SBD_1>;/dev/<SBD_2>;/dev/<SBD_3>"
+.br
+# Watchdog support:
+.br
+SBD_OPTS="-W -t300"
+.br
+=== 
+
+Note: If the SBD device becomes inaccessible from a node, this could
+cause the node to enter an infinite reboot cycle. That is technically
+correct, but depending on your administrative policies, might be 
+considered a nuisance. You may wish to not automatically start up
+openais on boot in such cases.
+
+Before proceeding, ensure that SBD has indeed started on all nodes
+through "rcopenais restart".
+Once the resource has started, your cluster is now successfully
+configured for shared-storage fencing, and will utilize this method in
+case a node needs to be fenced.
+
+The command sbd
+can be used to read and write the sbd device, see sbd(8) .
+
+To complete the sbd setup, it is necessary to activate SBD as a
+STONITH/fencing mechanism in the CIB.
+The SBD mechanism is used instead of other fencing/stonith mechanisms;
+please disable any others you might have configured before.
+.\"
+.P
+\fB* Software Watchdog\fR
+
+Increased protection is offered through "watchdog" support. Modern
+systems support a "hardware watchdog" that has to be updated by the
+software client, or else the hardware will enforce a system restart.
+This protects against failures of the sbd process itself, such as
+dieing, or becoming stuck on an IO error.
+
+It is highly recommended that you set up your Linux system
+to use a watchdog. Please refer to the SLES manual for this step.
+
+This involves loading the proper watchdog driver on system boot. On HP
+hardware, this is the "hpwdt" module. For systems with a Intel TCO,
+"iTCO_wdt" can be used. "softdog" is the most generic driver, but it is
+recommended that you use one with actual hardware integration. See
+/lib/modules/.../kernel/drivers/watchdog in the kernel package for a list
+of choices.
+
+No other software must access the watchdog timer. Some hardware vendors
+ship systems management software that use the watchdog for system resets
+(f.e. HP ASR daemon). Such software has to be disabled if the watchdog is
+used by SBD.
+
+SBD can be configured in /etc/sysconfig/sbd to use the systems' watchdog.
+.\"
+.P
+\fB* Timeout Settings\fR
+
+If your SBD device resides on a multipath group, you may need to adjust
+the timeouts sbd uses, as MPIO's path down detection can cause some
+latency: after the msgwait timeout, the message is assumed to have been
+delivered to the node. For multipath, this should be the time required
+for MPIO to detect a path failure and switch to the next path. You may
+have to test this in your environment. The node will perform suicide if
+it has not updated the watchdog timer fast enough; the watchdog timeout
+must be shorter than the msgwait timeout - half the value is a good
+estimate. This can be specified when the SBD device is initialized.
+
+If you want to avoid MD mirror splitting in case of IO errors, the watchdog
+timeout has to be shorter than the total MPIO failure timeout. Thus, a node
+is fenced before the MD mirror is splitted. On the other hand, the time
+the cluster waits for SAN and storage to recover is shortened. 
+
+In any case, the watchdog timeout must be shorter than sbd message wait timeout.
+The sbd message wait timeout must be shorter than the cluster stonith-timeout.
+
+If the sbd device recovers from IO errors within the watchdog timeout, the sbd
+daemon could reset the watchdog timer and save the node from being fenced.
+To allow re-discovery of a failed sbd device, at least the primary sbd retry
+cycle should be shorter than the watchdog timeout. Since this cycle is currently
+hardcoded as ten time the loop timeout, it has to be set by choosing an
+apropriate loop timeout.
+
+It might be also wise to set a start delay for the cluster resource agent in
+the CIB. This is done to overcome situations where both nodes fence each other
+within the sbd loop timeout, see sbd(8).
+
+Putting it all together:
+.br
+- How long a cluster survives a storage outage depends on the watchdog
+  timeout and the sbd retry cycle. All other timeouts should be aligned with
+  this settings. That means they have to be longer.
+.br
+- Storage resources - as Raid1, LVM, Filesystem - have operation timeouts.
+  Those should be aligned with the MPIO settings. This avoids non-needed failure
+  actions, but does not define how long the cluster will survive a storage
+  outage.
+.\"
+.SH FILES
+.TP
+/usr/sbin/sbd
+	the daemon (and control command).
+.TP
+/usr/lib64/stonith/plugins/external/sbd
+	the STONITH plugin.
+.TP
+/etc/sysconfig/sbd
+	the SBD configuration file.
+.TP
+/etc/sysconfig/kernel
+	the kernel and initrd configuration file.
+.TP
+/etc/rc.d/rc3.d/K01openais
+	stop script to prevent stonith during system shutdown.
+.TP
+/dev/<SBD>
+	the SBD block device(s).
+.TP
+/dev/watchdog
+	the watchdog device node.
+.TP
+/lib/modules/<kernel-version>/kernel/drivers/watchdog/
+	the watchdog modules.
+.\"
+.SH BUGS
+To report bugs for a SUSE or Novell product component, please use
+ http://support.novell.com/additional/bugreport.html .
+.\"
+.SH SEE ALSO
+
+\fBsbd\fP(8), \fBadd_watchdog_to_initrd\fP(8), \fBdisable_other_watchdog\fP(8),
+\fBmake_sbd_devices\fP(8), \fBdasdfmt\fP(8),
+http://www.linux-ha.org/wiki/SBD_Fencing ,
+http://www.mail-archive.com/pacemaker@oss.clusterlabs.org/msg03849.html ,
+http://www.novell.com/documentation/sle_ha/book_sleha/?page=/documentation/sle_ha/book_sleha/data/part_config.html ,
+http://www.novell.com/documentation/sle_ha/book_sleha/?page=/documentation/sle_ha/book_sleha/data/part_storage.html
+.\"
+.SH AUTHORS
+The content of this manual page was mostly derived from online documentation
+mentioned above.
+.\"
+.SH COPYRIGHT
+(c) 2009-2011 SUSE Linux GmbH, Germany.
+.br
+sbd comes with ABSOLUTELY NO WARRANTY.
+.br
+For details see the GNU General Public License at
+http://www.gnu.org/licenses/gpl.html
+.\"

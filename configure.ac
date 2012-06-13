@@ -20,7 +20,7 @@ dnl     checks for library functions
 dnl     checks for system services
 
 AC_INIT([sbd], 
-	[0.0.1],
+	[1.0],
 	[lmb@suse.com])
 AC_CANONICAL_HOST
 AC_CONFIG_AUX_DIR(.)
@@ -50,7 +50,7 @@ fi
 
 
 dnl The Makefiles and shell scripts we output
-AC_CONFIG_FILES([Makefile src/Makefile agent/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile agent/Makefile man/Makefile])
 
 dnl Now process the entire list of files added by previous 
 dnl  calls to AC_CONFIG_FILES()

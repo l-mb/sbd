@@ -1,1 +1,1 @@
-SUBDIRS = src agent
+SUBDIRS = src agent man

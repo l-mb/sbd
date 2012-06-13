@@ -1,0 +1,338 @@
+.TH sbd 8 "16 Jan 2012" "" "cluster-glue"
+.\"
+.SH NAME
+sbd \- Stonith Block Device daemon
+.\"
+.SH SYNOPSIS
+.B sbd
+\fIOPTIONS\fR [\fIOPT_ARGUMENT\fR] [\fICOMMAND\fR] [\fICMD_ARGUMENT\fR]
+
+.\"
+.SH OPTIONS
+.TP
+\fB-d\fR <SBD>
+	Block device to use (mandatory),
+if you have more than one device, provide them by specifying this
+option multiple times
+.TP
+\fB-h\fR
+	Display this help
+.TP
+\fB-n\fR <node>
+	Set local node name; defaults to uname -n (optional)
+.TP
+\fB-R\fR
+	Do NOT enable realtime priority (debugging only)
+.TP
+\fB-W\fR
+	Use watchdog (recommended) (watch only)
+.TP
+\fB-w\fR <SBD>
+	Specify watchdog device (optional) (watch only)
+.TP
+\fB-D\fR
+	Run as background daemon (optional) (watch only)
+.TP
+\fB-t\fR <N>
+ 	Set timeout to <N> seconds before automatic recover of failed SBD device
+(optional) (default is 3600, set to 0 to disable) (watch only)
+.TP
+\fB-v\fR
+	Enable some verbose debug logging (optional)
+.TP
+\fB-1\fR <N>
+	Set watchdog timeout to N seconds (optional) (create only)
+.TP
+\fB-2\fR <N>
+	Set slot allocation timeout to N seconds (optional) (create only)
+.TP
+\fB-3\fR <N>
+	Set daemon loop timeout to N seconds (optional) (create only)
+.TP
+\fB-4\fR <N>
+	Set msgwait timeout to N seconds (optional) (create only)
+.TP
+\fB-5\fR <N>
+	Warn if loop latency exceeds threshold (optional) (watch only)
+(default is 3, set to 0 to disable)
+
+.\"
+.SH COMMAND
+.TP
+\fBcreate\fR
+	Initialize N slots on devicde <SBD> - OVERWRITES DEVICE!
+.TP
+\fBlist\fR
+	List all allocated slots on device, and messages.
+.TP
+\fBdump\fR
+	Dump meta-data header from device.
+.TP
+\fBwatch\fR        
+	Loop forever, monitoring own slot
+.TP
+\fBallocate\fR <node>
+	Allocate a slot for node (optional)
+.TP
+\fBmessage\fR <node> (test|reset|off|clear|exit)
+	Write the specified message to node's slot.
+
+.\"
+.SH DESCRIPTION
+
+The \fBsbd\fR daemon automatically allocates one of the message slots on the
+assigned disk partition to itself, and constantly monitors it for messages to
+itself. Upon receipt of a message, the daemon immediately complies with the
+request, such as initiating a power-off or reboot cycle for fencing.
+
+The daemon also constantly monitors connectivity to the storage device,
+and commits suicide in case the partition becomes unreachable,
+guaranteeing that it is not disconnected from fencing message.
+
+The daemon is brought online on each node before the rest of the
+cluster stack is started, and terminated only after all other cluster
+components have been shut down - ensuring that cluster resources are
+never activated without SBD supervision.
+
+The environment must have shared storage reachable by all nodes.
+This shared storage segment must not make use of host-based RAID, cLVM2,
+nor DRBD. Please refer to sbd(7) for more information.
+
+The \fBsbd\fR can also be called manually to perform actions described in the 
+commands section of this manual page.
+
+In the rest of this text, this is referred to as "/dev/<SBD>" or "/dev/<SBD_n>",
+please substitute your actual pathname
+(f.e. "/dev/disk/by-id/scsi-1494554000000000036363600000000000000000000000000")
+for this below.
+
+If a watchdog is used together with the sbd, the watchdog is activated at initial
+start of the sbd daemon. Afterwards the watchdog timer is reset by the inquisitor
+process after each successful read loop of each watcher process.
+
+STONITH is an acronym for Shoot The Other Node in The Head. 
+.\"
+.SH EXAMPLES
+
+
+\fB* Initialising SBD Partition\fR
+
+All these steps must be performed as root.
+
+After having made very sure that this is indeed the device you want to
+use, and does not hold any data you need - as the sbd command will
+overwrite it without further requests for confirmation -, initialize one
+single SBD device:
+
+# \fBsbd -d /dev/<SBD> create\fR
+
+This will write a header to the device, and create slots for up to 255
+nodes sharing this device with default timings.
+
+If your sbd device resides on a multipath group, you may need to adjust
+the timeouts sbd uses, as MPIO's path down detection can cause some
+latency: after the msgwait timeout, the message is assumed to have been
+delivered to the node. For multipath, this should be the time required
+for MPIO to detect a path failure and switch to the next path. You may
+have to test this in your environment.
+
+Initialize three SBD devices in exact the same way, with identical settings:
+
+# \fBsbd -d /dev/<SBD_1> -d /dev/<SBD_2> -d /dev/<SBD_3> create\fR
+
+
+\fB* Setting Watchdog Timeout for SBD Partition\fR
+
+The node will perform suicide if
+it has not updated the watchdog timer fast enough; the watchdog timeout
+must be shorter than the msgwait timeout - half the value is a good
+estimate. This can be specified when the SBD device is initialized:
+
+# \fB/usr/sbin/sbd -d /dev/<SBD> -4 $msgwait -3 $looptimeout -1 $watchdogtimeout create\fR
+
+(All timeouts are in seconds. See also sbd(7) for information on timings.)
+
+If your single sbd device resides on a multipath group, you may need to
+adjust the timeouts sbd uses, as MPIO's path down detection can cause
+delays. (If you have multiple devices, transient timeouts of a single
+device will not negatively affect SBD. However, if they all go through
+the same FC switches, you will still need to do this.)
+
+
+\fB* Dumping Content of SBD Partition\fR
+
+You can look at what was written to the device using:
+
+# \fBsbd -d /dev/<SBD> dump\fR 
+.br
+Header version     : 2
+.br
+Number of slots    : 255
+.br
+Sector size        : 512
+.br
+Timeout (watchdog) : 5
+.br
+Timeout (allocate) : 2
+.br
+Timeout (loop)     : 1
+.br
+Timeout (msgwait)  : 10
+
+As you can see, the timeouts are also stored in the header, to ensure
+that all participating nodes agree on them. The example output above
+shows built-in defaults. Usually the timeouts for watchdog and msgwait
+are adjusted to specific needs, see sbd(7). The timeouts for allocate
+and loop normally should not be changed.
+
+Additionally, it is highly recommended that you set up your Linux system
+to use a watchdog.
+
+
+\fB* Starting the SBD daemon\fR
+
+The sbd daemon is a critical piece of the cluster stack. It must always
+be running when the cluster stack is up, or even when the rest of it has
+crashed, so that it can be fenced.
+
+The openais init script starts and stops SBD if configured; add the
+following to /etc/sysconfig/sbd:
+
+===
+.br
+# The next line points to three devices (no trailing ";"):
+.br
+SBD_DEVICE="/dev/<SBD_1>;/dev/<SBD_2>;/dev/<SBD_3>"
+.br
+# The next line enables watchdog support, re-discover time 210 seconds:
+.br
+SBD_OPTS="-W -t 210"
+.br
+=== 
+
+Before proceeding, ensure that SBD has indeed started on all nodes through
+
+# \fBrcopenais restart\fR
+
+
+\fB* Listing Content of SBD\fR
+
+The command
+
+# \fBsbd -d /dev/<SBD> list\fR
+
+will dump the node slots, and their current messages, from the sbd
+device. You should see all cluster nodes that have ever been started
+with sbd being listed there; most likely with the message slot showing
+"clear".
+
+
+\fB* Testing SBD\fR
+
+You can now try sending a test message to one of the nodes:
+
+# \fBsbd -d /dev/<SBD> message nodea test\fR
+
+The node will acknowledge the receipt of the message in the system logs:
+.br
+Aug 29 14:10:00 nodea sbd: [13412]: info: Received command test from nodeb
+
+This confirms that SBD is indeed up and running on the node, and that it
+is ready to receive messages.
+
+
+\fB* Recovering from temporary SBD device outage\fR 
+
+If you have multiple devices, failure of a single device is not immediately
+fatal.
+SBD will retry ten times in succession to reattach to the device, and then pause
+(as to not flood the system) before retrying. The pause intervall timeout could
+ be configured. Thus, SBD should automatically recover from temporary outages.
+
+Should you wish to try reattach to the device right now, you can send a SIGUSR1
+to the SBD parent daemon.
+
+# \fBps aux | grep sbd\fR
+.br
+root 3363 0.0 1.0 44552 5764 ? SL Dec16 0:13 sbd: inquisitor
+.br
+root 3364 0.0 1.0 44568 5712 ? SL Dec16 0:32 sbd: watcher: /dev/disk/by-id/scsi-1494554000000000036363600000000000000000000000000-part1 - slot: 0
+.br
+# \fBkill -SIGUSR1 3363\fR
+.br
+# \fBps aux | grep sbd\fR
+.br
+root 3363 0.0 1.0 44552 5764 ? SL Dec16 0:13 sbd: inquisitor
+.br
+root 3364 0.0 1.0 44568 5712 ? SL Dec16 0:32 sbd: watcher: /dev/disk/by-id/scsi-1494554000000000036363600000000000000000000000000-part1 - slot: 0
+.br
+root 3380 0.0 1.0 44568 5712 ? SL Dec16 0:00 sbd: watcher: /dev/disk/by-id/scsi-1494554000000000038383800000000000000000000000000-part1 - slot: 0
+.\" check the fake
+
+There are two to four sbd processes, depending on the number of sbd devices:
+One master process (inquisitor), and per device one watcher.
+
+\fB* Configuring the Fencing Resource in the Cluster Information Base\fR
+
+To complete the sbd setup, it is necessary to activate sbd as a
+STONITH/fencing mechanism in the CIB as follows:
+
+# \fBcrm
+.br
+configure
+.br
+property stonith-enabled="true"
+.br
+property stonith-timeout="150s"
+.br
+primitive stonith_sbd stonith:external/sbd
+op start interval="0" timeout="15" start-delay="5"
+.br
+commit
+.br
+quit
+\fR
+
+Note that since node slots are allocated automatically, no manual hostlist needs
+to be defined. Also, there is no need to define the SBD devices. On the other hand,
+ a start delay is set. This is done to overcome situations where both nodes fence
+each other within the sbd loop timeout.
+
+Once the resource has started, your cluster is now successfully
+configured for shared-storage fencing, and will utilize this method in
+case a node needs to be fenced.
+
+The sbd agent does not need to and should not be cloned. If all of your nodes
+run SBD, as is most likely, not even a monitor action provides a real benefit,
+since the daemon would suicide the node if there was a problem.
+
+SBD also supports turning the reset request into a crash request, which may be
+helpful for debugging if you have kernel crashdumping configured; then, every
+fence request will cause the node to dump core. You can enable this via the
+crashdump="true" setting on the fencing resource. This is not recommended for
+on-going production use, but for debugging phases. 
+.\"
+.SH BUGS
+To report bugs for a SUSE or Novell product component, please use
+ http://support.novell.com/additional/bugreport.html .
+.\"
+.SH SEE ALSO
+
+\fBsbd\fP(7),
+http://www.linux-ha.org/wiki/SBD_Fencing ,
+http://www.mail-archive.com/pacemaker@oss.clusterlabs.org/msg03849.html ,
+http://www.novell.com/documentation/sle_ha/book_sleha/?page=/documentation/sle_ha/book_sleha/data/part_config.html ,
+http://www.novell.com/documentation/sle_ha/book_sleha/?page=/documentation/sle_ha/book_sleha/data/part_storage.html
+.\"
+.SH AUTHORS
+The content of this manual page was mostly derived from online documentation
+mentioned above and the programm's help option.
+.\"
+.SH COPYRIGHT
+(c) 2009-2011 SUSE Linux GmbH, Germany.
+.br
+sbd comes with ABSOLUTELY NO WARRANTY.
+.br
+For details see the GNU General Public License at
+http://www.gnu.org/licenses/gpl.html
+.\"
