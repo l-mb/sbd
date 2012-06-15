@@ -46,8 +46,7 @@ if test "$missing" = "yes"; then
    AC_MSG_ERROR([Missing required libraries or functions.])
 fi
 
-
-
+AC_PATH_PROGS(POD2MAN, pod2man, pod2man)
 
 dnl The Makefiles and shell scripts we output
 AC_CONFIG_FILES([Makefile src/Makefile agent/Makefile man/Makefile])
