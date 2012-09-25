@@ -192,7 +192,7 @@ maximize_priority(void)
 		return;
 	}
 
-	cl_make_realtime(-1, -1, 256, 256);
+	cl_make_realtime(-1, 100, 256, 256);
 
 	if (ioprio_set(IOPRIO_WHO_PROCESS, getpid(),
 			IOPRIO_PRIO_VALUE(IOPRIO_CLASS_RT, 1)) != 0) {
