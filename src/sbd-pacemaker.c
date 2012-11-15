@@ -51,6 +51,8 @@
 #include <libgen.h>
 #include <sys/utsname.h>
 
+#include <config.h>
+
 #include <crm_config.h>
 #include <crm/msg_xml.h>
 #include <crm/common/util.h>
@@ -58,8 +60,15 @@
 #include <crm/common/ipc.h>
 #include <crm/common/mainloop.h>
 #ifdef CHECK_AIS
-#include <crm/cluster/stack.h>
-#include <crm/common/cluster.h>
+#  if HAVE_PACEMAKER_CRM_CLUSTER_STACK_H
+#    include <crm/cluster/stack.h>
+#  endif
+#  if HAVE_PACEMAKER_CRM_COMMON_CLUSTER_H
+#    include <crm/common/cluster.h>
+#  endif
+#  if HAVE_PACEMAKER_CRM_CLUSTER_H
+#    include <crm/cluster.h>
+#  endif
 #endif
 #include <crm/cib.h>
 #include <crm/pengine/status.h>
@@ -94,7 +103,7 @@ crm_trigger_t *refresh_trigger = NULL;
 static gboolean
 mon_timer_popped(gpointer data)
 {
-	int rc = cib_ok;
+	int rc = 0;
 
 	if (timer_id_reconnect > 0) {
 		g_source_remove(timer_id_reconnect);
@@ -102,7 +111,7 @@ mon_timer_popped(gpointer data)
 
 	rc = cib_connect(TRUE);
 
-	if (rc != cib_ok) {
+	if (rc != 0) {
 		timer_id_reconnect = g_timeout_add(reconnect_msec, mon_timer_popped, NULL);
 		set_pcmk_health(0);
 	}
@@ -154,15 +163,19 @@ mon_shutdown(int nsig)
 int
 cib_connect(gboolean full)
 {
-	int rc = cib_ok;
+	int rc = 0;
 
+#if !HAVE_PCMK_STRERROR
 	CRM_CHECK(cib != NULL, return cib_missing);
+#else
+	CRM_CHECK(cib != NULL, return -EINVAL);
+#endif
 
 	if (cib->state != cib_connected_query && cib->state != cib_connected_command) {
 
 		rc = cib->cmds->signon(cib, crm_system_name, cib_query);
 
-		if (rc != cib_ok) {
+		if (rc != 0) {
 			return rc;
 		}
 
@@ -170,20 +183,24 @@ cib_connect(gboolean full)
 		mon_refresh_state(NULL);
 
 		if (full) {
-			if (rc == cib_ok) {
+			if (rc == 0) {
 				rc = cib->cmds->set_connection_dnotify(cib, mon_cib_connection_destroy);
+#if !HAVE_PCMK_STRERROR
 				if (rc == cib_NOTSUPPORTED) {
+#else
+				if (rc == -EPROTONOSUPPORT) {
+#endif
 					/* Notification setup failed, won't be able to reconnect after failure */
-					rc = cib_ok;
+					rc = 0;
 				}
 			}
 
-			if (rc == cib_ok) {
+			if (rc == 0) {
 				cib->cmds->del_notify_callback(cib, T_CIB_DIFF_NOTIFY, crm_diff_update);
 				rc = cib->cmds->add_notify_callback(cib, T_CIB_DIFF_NOTIFY, crm_diff_update);
 			}
 
-			if (rc != cib_ok) {
+			if (rc != 0) {
 				/* Notification setup failed, could not monitor CIB actions */
 				clean_up(-rc);
 			}
@@ -217,9 +234,15 @@ ais_membership_destroy(gpointer user_data)
 }
 
 static gboolean
+#if HAVE_INIT_AIS_CONNECTION_ONCE
 ais_membership_dispatch(AIS_Message * wrapper, char *data, int sender)
 {
 	switch (wrapper->header.id) {
+#else		
+ais_membership_dispatch(int kind, const char *from, const char *data)
+{
+	switch (kind) {
+#endif
 	case crm_class_quorum:
 		break;
 	default:
@@ -240,6 +263,9 @@ int
 servant_pcmk(const char *diskname, const void* argp)
 {
 	int exit_code = 0;
+#if !HAVE_INIT_AIS_CONNECTION_ONCE
+	crm_cluster_t crm_cluster;
+#endif
 
 	cl_log(LOG_INFO, "Monitoring Pacemaker health");
 	set_proc_title("sbd: watcher: Pacemaker");
@@ -255,8 +281,17 @@ servant_pcmk(const char *diskname, const void* argp)
 		cl_log(LOG_ERR, "SBD currently only supports legacy AIS for quorum state poll");
 	}
 
+#  if HAVE_INIT_AIS_CONNECTION_ONCE
 	while (!init_ais_connection_once
 		(ais_membership_dispatch, ais_membership_destroy, NULL, NULL, &local_id)) {
+#  else
+        if(is_openais_cluster()) {
+            crm_cluster.destroy = ais_membership_destroy;
+            crm_cluster.cs_dispatch = ais_membership_dispatch;
+        }
+
+	while (!crm_cluster_connect(&crm_cluster)) {
+#  endif
 		cl_log(LOG_INFO, "Waiting to sign in with AIS ...");
 		sleep(reconnect_msec / 1000);
 	}
@@ -268,12 +303,16 @@ servant_pcmk(const char *diskname, const void* argp)
 		do {
 			exit_code = cib_connect(TRUE);
 
-			if (exit_code != cib_ok) {
+			if (exit_code != 0) {
 				sleep(reconnect_msec / 1000);
 			}
+#if !HAVE_PCMK_STRERROR
 		} while (exit_code == cib_connection);
+#else
+		} while (exit_code == -ENOTCONN);
+#endif
 
-		if (exit_code != cib_ok) {
+		if (exit_code != 0) {
 			clean_up(-exit_code);
 		}
 	}
@@ -411,6 +450,8 @@ crm_diff_update(const char *event, xmlNode * msg)
 	int rc = -1;
 	long now = time(NULL);
 	const char *op = NULL;
+
+#if !HAVE_CIB_APPLY_PATCH_EVENT
 	unsigned int log_level = LOG_INFO;
 
 	xmlNode *diff = NULL;
@@ -425,9 +466,13 @@ crm_diff_update(const char *event, xmlNode * msg)
 	op = crm_element_value(msg, F_CIB_OPERATION);
 	diff = get_message_xml(msg, F_CIB_UPDATE_RESULT);
 
-	if (rc < cib_ok) {
+	if (rc < 0) {
 		log_level = LOG_WARNING;
+#  if !HAVE_PCMK_STRERROR
 		cl_log(log_level, "[%s] %s ABORTED: %s", event, op, cib_error2string(rc));
+#  else
+		cl_log(log_level, "[%s] %s ABORTED: %s", event, op, pcmk_strerror(rc));
+#  endif
 		return;
 	}
 
@@ -436,12 +481,37 @@ crm_diff_update(const char *event, xmlNode * msg)
 		current_cib = NULL;
 		rc = cib_process_diff(op, cib_force_diff, NULL, NULL, diff, cib_last, &current_cib, NULL);
 
-		if (rc != cib_ok) {
+		if (rc != 0) {
+#  if !HAVE_PCMK_STRERROR
 			crm_debug("Update didn't apply, requesting full copy: %s", cib_error2string(rc));
+#  else
+			crm_debug("Update didn't apply, requesting full copy: %s", pcmk_strerror(rc));
+#  endif
 			free_xml(current_cib);
 			current_cib = NULL;
 		}
 	}
+	free_xml(cib_last);
+#else
+	if (current_cib != NULL) {
+		xmlNode *cib_last = current_cib;
+		current_cib = NULL;
+
+		rc = cib_apply_patch_event(msg, cib_last, &current_cib, LOG_DEBUG);
+		free_xml(cib_last);
+
+		switch(rc) {
+			case pcmk_err_diff_resync:
+			case pcmk_err_diff_failed:
+				crm_warn("[%s] %s Patch aborted: %s (%d)", event, op, pcmk_strerror(rc), rc);
+			case pcmk_ok:
+				break;
+			default:
+				crm_warn("[%s] %s ABORTED: %s (%d)", event, op, pcmk_strerror(rc), rc);
+				return;
+		}
+	}
+#endif
 
 	if (current_cib == NULL) {
 		current_cib = get_cib_copy(cib);
@@ -453,7 +523,6 @@ crm_diff_update(const char *event, xmlNode * msg)
 	} else {
 		mainloop_set_trigger(refresh_trigger);
 	}
-	free_xml(cib_last);
 }
 
 gboolean
