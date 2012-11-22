@@ -94,8 +94,8 @@ watchdog_init_interval(void)
 				": Failed to set watchdog timer to %u seconds.",
 				timeout);
 		cl_log(LOG_CRIT, "Please validate your watchdog configuration!");
-		cl_log(LOG_CRIT, "Choose a different watchdog driver or specify -T to silence this check if you are sure.");
-		/* return -1; */
+		cl_log(LOG_CRIT, "Choose a different watchdog driver or specify -T to skip this if you are completely sure.");
+		return -1;
 	} else {
 		cl_log(LOG_INFO, "Set watchdog timeout to %u seconds.",
 				timeout);
