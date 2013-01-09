@@ -272,7 +272,7 @@ servant_pcmk(const char *diskname, const void* argp)
 	reconnect_msec = 2000;
 
 	/* We don't want any noisy crm messages */
-	set_crm_log_level(LOG_ERR);
+	set_crm_log_level(LOG_CRIT);
 
 #ifdef CHECK_AIS
 	cluster_stack = get_cluster_type();
