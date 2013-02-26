@@ -882,16 +882,24 @@ do_crashdump(void)
 void
 do_reset(void)
 {
-	if (debug_mode == 2) {
-		cl_log(LOG_ERR, "Skipping request to suicide due to DEBUG MODE!");
-		watchdog_close();
-		exit(0);
-	}
 	if (debug_mode == 1) {
 		cl_log(LOG_ERR, "Request to suicide changed to kdump due to DEBUG MODE!");
 		watchdog_close();
 		sysrq_trigger('c');
 		exit(0);
+	} else if (debug_mode == 2) {
+		cl_log(LOG_ERR, "Skipping request to suicide due to DEBUG MODE!");
+		watchdog_close();
+		exit(0);
+	} else if (debug_mode == 3) {
+		/* The idea is to give the system some time to flush
+		 * logs to disk before rebooting. */
+		cl_log(LOG_ERR, "Delaying request to suicide by 10s due to DEBUG MODE!");
+		watchdog_close();
+		sync();
+		sync();
+		sleep(10);
+		cl_log(LOG_ERR, "Debug mode is now becoming real ...");
 	}
 	sysrq_trigger('b');
 	cl_reboot(5, "sbd is self-fencing (reset)");
@@ -902,16 +910,24 @@ do_reset(void)
 void
 do_off(void)
 {
-	if (debug_mode == 2) {
-		cl_log(LOG_ERR, "Skipping request to power-off due to DEBUG MODE!");
-		watchdog_close();
-		exit(0);
-	}
 	if (debug_mode == 1) {
 		cl_log(LOG_ERR, "Request to power-off changed to kdump due to DEBUG MODE!");
 		watchdog_close();
 		sysrq_trigger('c');
 		exit(0);
+	} else 	if (debug_mode == 2) {
+		cl_log(LOG_ERR, "Skipping request to power-off due to DEBUG MODE!");
+		watchdog_close();
+		exit(0);
+	} else if (debug_mode == 3) {
+		/* The idea is to give the system some time to flush
+		 * logs to disk before rebooting. */
+		cl_log(LOG_ERR, "Delaying request to power-off by 10s due to DEBUG MODE!");
+		watchdog_close();
+		sync();
+		sync();
+		sleep(10);
+		cl_log(LOG_ERR, "Debug mode is now becoming real ...");
 	}
 	sysrq_trigger('o');
 	cl_reboot(5, "sbd is self-fencing (power-off)");

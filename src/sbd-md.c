@@ -712,7 +712,7 @@ void inquisitor_child(void)
 				continue;
 			}
 			if (debug_mode < 2) {
-				/* At level 2, we do nothing, but expect
+				/* At level 2 or above, we do nothing, but expect
 				 * things to eventually return to
 				 * normal. */
 				do_reset();
