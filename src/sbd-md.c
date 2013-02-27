@@ -213,6 +213,7 @@ void servant_exit(void)
 int servant(const char *diskname, const void* argp)
 {
 	struct sector_mbox_s *s_mbox = NULL;
+	struct sector_header_s	*s_header = NULL;
 	int mbox;
 	int rc = 0;
 	time_t t0, t1, latency;
@@ -220,6 +221,7 @@ int servant(const char *diskname, const void* argp)
 	sigset_t servant_masks;
 	struct sbd_context *st;
 	pid_t ppid;
+	char uuid[37];
 	const struct servants_list_item *s = argp;
 
 	if (!diskname) {
@@ -248,6 +250,17 @@ int servant(const char *diskname, const void* argp)
 		return -1;
 	}
 
+	s_header = header_get(st);
+	if (!s_header) {
+		cl_log(LOG_ERR, "Not a valid header on %s", diskname);
+		return -1;
+	}
+
+	if (s_header->minor_version > 0) {
+		uuid_unparse_lower(s_header->uuid, uuid);
+		cl_log(LOG_INFO, "Device %s uuid: %s", diskname, uuid);
+	}
+
 	mbox = slot_allocate(st, local_uname);
 	if (mbox < 0) {
 		cl_log(LOG_ERR,
@@ -257,7 +270,12 @@ int servant(const char *diskname, const void* argp)
 		goto out;
 	}
 	DBGLOG(LOG_INFO, "Monitoring slot %d on disk %s", mbox, diskname);
-	set_proc_title("sbd: watcher: %s - slot: %d", diskname, mbox);
+	if (s_header->minor_version == 0) {
+		set_proc_title("sbd: watcher: %s - slot: %d", diskname, mbox);
+	} else {
+		set_proc_title("sbd: watcher: %s - slot: %d - uuid: %s",
+				diskname, mbox, uuid);
+	}
 
 	s_mbox = sector_alloc();
 	if (s->zero_mbox) {

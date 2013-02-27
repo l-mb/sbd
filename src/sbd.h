@@ -44,6 +44,7 @@
 #include <syslog.h>
 #include <time.h>
 #include <unistd.h>
+#include <uuid/uuid.h>
 
 /* signals reserved for multi-disk sbd */
 #define SIG_LIVENESS (SIGRTMIN + 1)	/* report liveness of the disk */
@@ -65,6 +66,10 @@ struct sector_header_s {
 	uint32_t	timeout_allocate;
 	uint32_t	timeout_loop;
 	uint32_t	timeout_msgwait;
+	/* Minor version for extensions to the core data set:
+	 * compatible and optional values. */
+	unsigned char	minor_version;
+	uuid_t		uuid; /* 16 bytes */
 };
 
 struct sector_mbox_s {

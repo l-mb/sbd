@@ -500,6 +500,7 @@ init_device(struct sbd_context *st)
 	struct sector_node_s	*s_node;
 	struct sector_mbox_s	*s_mbox;
 	struct stat 		s;
+	char			uuid[37];
 	int			i;
 	int			rc = 0;
 
@@ -515,16 +516,20 @@ init_device(struct sbd_context *st)
 	s_header->timeout_loop = timeout_loop;
 	s_header->timeout_msgwait = timeout_msgwait;
 
+	s_header->minor_version = 1;
+	uuid_generate(s_header->uuid);
+	uuid_unparse_lower(s_header->uuid, uuid);
+
 	fstat(st->devfd, &s);
 	/* printf("st_size = %ld, st_blksize = %ld, st_blocks = %ld\n",
 			s.st_size, s.st_blksize, s.st_blocks); */
 
-	cl_log(LOG_INFO, "Creating version %d header on device %d",
-			s_header->version,
-			st->devfd);
-	fprintf(stdout, "Creating version %d header on device %d\n",
-			s_header->version,
-			st->devfd);
+	cl_log(LOG_INFO, "Creating version %d.%d header on device %d (uuid: %s)",
+			s_header->version, s_header->minor_version,
+			st->devfd, uuid);
+	fprintf(stdout, "Creating version %d.%d header on device %d (uuid: %s)\n",
+			s_header->version, s_header->minor_version,
+			st->devfd, uuid);
 	if (header_write(st, s_header) < 0) {
 		rc = -1; goto out;
 	}
@@ -708,6 +713,7 @@ slot_msg(struct sbd_context *st, const char *name, const char *cmd)
 	struct sector_mbox_s	*s_mbox = NULL;
 	int			mbox;
 	int			rc = 0;
+	char			uuid[37];
 
 	if (!name || !cmd) {
 		cl_log(LOG_ERR, "slot_msg(): No recipient / cmd specified.\n");
@@ -721,6 +727,11 @@ slot_msg(struct sbd_context *st, const char *name, const char *cmd)
 
 	if (strcmp(name, "LOCAL") == 0) {
 		name = local_uname;
+	}
+	
+	if (s_header->minor_version > 0) {
+		uuid_unparse_lower(s_header->uuid, uuid);
+		cl_log(LOG_INFO, "Device UUID: %s", uuid);
 	}
 
 	mbox = slot_lookup(st, s_header, name);
@@ -972,11 +983,19 @@ int
 header_dump(struct sbd_context *st)
 {
 	struct sector_header_s *s_header;
+	char uuid[37];
+
 	s_header = header_get(st);
 	if (s_header == NULL)
 		return -1;
 
-	printf("Header version     : %u\n", s_header->version);
+	printf("Header version     : %u.%u\n", s_header->version,
+			s_header->minor_version);
+	if (s_header->minor_version > 0) {
+		uuid_unparse_lower(s_header->uuid, uuid);
+		printf("UUID               : %s\n", uuid);
+	}
+
 	printf("Number of slots    : %u\n", s_header->slots);
 	printf("Sector size        : %lu\n",
 			(unsigned long)s_header->sector_size);
