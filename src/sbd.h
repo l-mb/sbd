@@ -89,7 +89,7 @@ struct servants_list_item {
 	int restarts;
 	int restart_blocked;
 	int outdated;
-	int zero_mbox;
+	int first_start;
 	struct timespec t_last, t_started;
 	struct servants_list_item *next;
 };

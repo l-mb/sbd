@@ -278,7 +278,7 @@ int servant(const char *diskname, const void* argp)
 	}
 
 	s_mbox = sector_alloc();
-	if (s->zero_mbox) {
+	if (s->first_start) {
 		DBGLOG(LOG_INFO, "First servant start - zeroing inbox");
 		if (mbox_write(st, mbox, s_mbox) < 0) {
 			rc = -1;
@@ -377,8 +377,7 @@ void recruit_servant(const char *devname, pid_t pid)
 	memset(newbie, 0, sizeof(*newbie));
 	newbie->devname = strdup(devname);
 	newbie->pid = pid;
-	/* Newly allocated servants should try to zero the mbox once */
-	newbie->zero_mbox = 1;
+	newbie->first_start = 1;
 
 	if (!s) {
 		servants_leader = newbie;
@@ -645,10 +644,7 @@ void inquisitor_child(void)
 					}
 					pcmk_healthy = 1;
 				};
-				/* After the first success, we should
-				 * never attempt to zero the mbox again
-				 */
-				s->zero_mbox = 0;
+				s->first_start = 0;
 				clock_gettime(CLOCK_MONOTONIC, &s->t_last);
 			}
 		} else if (sig == SIG_TEST) {
