@@ -1015,7 +1015,7 @@ int main(int argc, char **argv, char **envp)
 			usage();
 			return (0);
 		default:
-			exit_status = -1;
+			exit_status = -2;
 			goto out;
 			break;
 		}
@@ -1030,13 +1030,14 @@ int main(int argc, char **argv, char **envp)
 	/* There must at least be one command following the options: */
 	if ((argc - optind) < 1) {
 		fprintf(stderr, "Not enough arguments.\n");
-		exit_status = -1;
+		exit_status = -2;
 		goto out;
 	}
 
 	if (init_set_proc_title(argc, argv, envp) < 0) {
 		fprintf(stderr, "Allocation of proc title failed.");
-		exit(1);
+		exit_status = -1;
+		goto out;
 	}
 
 	maximize_priority();
@@ -1056,12 +1057,16 @@ int main(int argc, char **argv, char **envp)
 	} else if (strcmp(argv[optind], "watch") == 0) {
 		exit_status = inquisitor();
 	} else {
-		exit_status = -1;
+		exit_status = -2;
 	}
 
 out:
 	if (exit_status < 0) {
-		usage();
+		if (exit_status == -2) {
+			usage();
+		} else {
+			fprintf(stderr, "sbd failed; please check the logs.");
+		}
 		return (1);
 	}
 	return (0);
