@@ -258,6 +258,23 @@ If set to zero, processes will be restarted indefinitely and immediately.
 
 Check Pacemaker quorum and node health.
 
+=item B<-S> I<N>
+
+Set the start mode. (Defaults to I<0>.)
+
+If this is set to zero, sbd will always start up unconditionally,
+regardless of whether the node was previously fenced or not.
+
+If set to one, sbd will only start if the node was previously shutdown
+cleanly (as indicated by an exit request message in the slot), or if the
+slot is empty. A reset, crashdump, or power-off request in any slot will
+halt the start up.
+
+This is useful to prevent nodes from rejoining if they were faulty. The
+node must be manually "unfenced" by sending an empty message to it:
+
+	sbd -d /dev/sda1 message node1 clear
+
 =item B<-Z>
 
 Enable trace mode. B<Warning: this is unsafe for production, use at your

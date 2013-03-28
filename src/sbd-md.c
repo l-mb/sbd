@@ -25,6 +25,7 @@ static int	servant_restart_interval = 5;
 static int	servant_restart_count = 1;
 static int	servant_inform_parent = 0;
 static int	check_pcmk = 0;
+static int	start_mode = 0;
 
 int quorum_write(int good_servants)
 {
@@ -279,7 +280,24 @@ int servant(const char *diskname, const void* argp)
 
 	s_mbox = sector_alloc();
 	if (s->first_start) {
+		if (start_mode > 0) {
+			if (mbox_read(st, mbox, s_mbox) < 0) {
+				cl_log(LOG_ERR, "mbox read failed during start-up in servant.");
+				rc = -1;
+				goto out;
+			}
+			if (s_mbox->cmd != SBD_MSG_EXIT &&
+					s_mbox->cmd != SBD_MSG_EMPTY) {
+				/* Not a clean stop. Abort start-up */
+				cl_log(LOG_WARNING, "Found fencing message - aborting start-up. Manual intervention required!");
+				ppid = getppid();
+				sigqueue(ppid, SIG_EXITREQ, signal_value);
+				rc = 0;
+				goto out;
+			}
+		}
 		DBGLOG(LOG_INFO, "First servant start - zeroing inbox");
+		memset(s_mbox, 0, sizeof(*s_mbox));
 		if (mbox_write(st, mbox, s_mbox) < 0) {
 			rc = -1;
 			goto out;
@@ -915,7 +933,7 @@ int main(int argc, char **argv, char **envp)
 
 	sbd_get_uname();
 
-	while ((c = getopt(argc, argv, "C:DPRTWZhvw:d:n:1:2:3:4:5:t:I:F:")) != -1) {
+	while ((c = getopt(argc, argv, "C:DPRTWZhvw:d:n:1:2:3:4:5:t:I:F:S:")) != -1) {
 		switch (c) {
 		case 'D':
 			break;
@@ -926,6 +944,10 @@ int main(int argc, char **argv, char **envp)
 		case 'R':
 			skip_rt = 1;
 			cl_log(LOG_INFO, "Realtime mode deactivated.");
+			break;
+		case 'S':
+			start_mode = atoi(optarg);
+			cl_log(LOG_INFO, "Start mode set to: %d", (int)start_mode);
 			break;
 		case 'v':
 			debug = 1;
