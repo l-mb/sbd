@@ -389,7 +389,7 @@ void recruit_servant(const char *devname, pid_t pid)
 
 	newbie = malloc(sizeof(*newbie));
 	if (!newbie) {
-		fprintf(stderr, "malloc failed in recruit_servant.");
+		fprintf(stderr, "malloc failed in recruit_servant.\n");
 		exit(1);
 	}
 	memset(newbie, 0, sizeof(*newbie));
@@ -1035,7 +1035,7 @@ int main(int argc, char **argv, char **envp)
 	}
 
 	if (init_set_proc_title(argc, argv, envp) < 0) {
-		fprintf(stderr, "Allocation of proc title failed.");
+		fprintf(stderr, "Allocation of proc title failed.\n");
 		exit_status = -1;
 		goto out;
 	}
@@ -1065,7 +1065,7 @@ out:
 		if (exit_status == -2) {
 			usage();
 		} else {
-			fprintf(stderr, "sbd failed; please check the logs.");
+			fprintf(stderr, "sbd failed; please check the logs.\n");
 		}
 		return (1);
 	}
