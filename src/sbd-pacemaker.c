@@ -60,15 +60,7 @@
 #include <crm/common/ipc.h>
 #include <crm/common/mainloop.h>
 #ifdef CHECK_AIS
-#  if HAVE_PACEMAKER_CRM_CLUSTER_STACK_H
-#    include <crm/cluster/stack.h>
-#  endif
-#  if HAVE_PACEMAKER_CRM_COMMON_CLUSTER_H
-#    include <crm/common/cluster.h>
-#  endif
-#  if HAVE_PACEMAKER_CRM_CLUSTER_H
-#    include <crm/cluster.h>
-#  endif
+#  include <crm/cluster.h>
 #endif
 #include <crm/cib.h>
 #include <crm/pengine/status.h>
@@ -217,7 +209,7 @@ mon_timer_ais(gpointer data)
 		g_source_remove(timer_id_ais);
 	}
 
-	send_ais_text(crm_class_quorum, NULL, TRUE, NULL, crm_msg_ais);
+	send_cluster_text(crm_class_quorum, NULL, TRUE, NULL, crm_msg_ais);
 
 	/* The timer is set in the response processing */
 	return FALSE;
@@ -233,20 +225,27 @@ ais_membership_destroy(gpointer user_data)
 	exit(1);
 }
 
-static gboolean
-#if HAVE_INIT_AIS_CONNECTION_ONCE
-ais_membership_dispatch(AIS_Message * wrapper, char *data, int sender)
+static void
+ais_membership_dispatch(cpg_handle_t handle,
+                          const struct cpg_name *groupName,
+                          uint32_t nodeid, uint32_t pid, void *msg, size_t msg_len)
 {
-	switch (wrapper->header.id) {
-#else		
-ais_membership_dispatch(int kind, const char *from, const char *data)
-{
+	uint32_t kind = 0;
+	const char *from = NULL;
+	char *data = pcmk_message_common_cs(handle, nodeid, pid, msg, &kind, &from);
+
+	if (!data) {
+		return;
+	}
+
+	free(data);
+	data = NULL;
+
 	switch (kind) {
-#endif
 	case crm_class_quorum:
 		break;
 	default:
-		return TRUE;
+		return;
 		break;
 	}
 
@@ -255,7 +254,7 @@ ais_membership_dispatch(int kind, const char *from, const char *data)
 
 	timer_id_ais = g_timeout_add(timeout_loop * 1000, mon_timer_ais, NULL);
 
-	return TRUE;
+	return;
 }
 #endif
 
@@ -263,9 +262,7 @@ int
 servant_pcmk(const char *diskname, const void* argp)
 {
 	int exit_code = 0;
-#if !HAVE_INIT_AIS_CONNECTION_ONCE
 	crm_cluster_t crm_cluster;
-#endif
 
 	cl_log(LOG_INFO, "Monitoring Pacemaker health");
 	set_proc_title("sbd: watcher: Pacemaker");
@@ -279,20 +276,19 @@ servant_pcmk(const char *diskname, const void* argp)
 
 	if (cluster_stack != pcmk_cluster_classic_ais) {
 		cl_log(LOG_ERR, "SBD currently only supports legacy AIS for quorum state poll");
+		/* TODO: Wonder if that's still true with the new code?
+		 * Should be merged completely, right? */
 	}
 
-#  if HAVE_INIT_AIS_CONNECTION_ONCE
-	while (!init_ais_connection_once
-		(ais_membership_dispatch, ais_membership_destroy, NULL, NULL, &local_id)) {
-#  else
         if(is_openais_cluster()) {
             crm_cluster.destroy = ais_membership_destroy;
-            crm_cluster.cs_dispatch = ais_membership_dispatch;
+	    crm_cluster.cpg.cpg_deliver_fn = ais_membership_dispatch;
+	    /* crm_cluster.cpg.cpg_confchg_fn = pcmk_cpg_membership; TODO? */
+	    crm_cluster.cpg.cpg_confchg_fn = NULL;
         }
 
 	while (!crm_cluster_connect(&crm_cluster)) {
-#  endif
-		cl_log(LOG_INFO, "Waiting to sign in with AIS ...");
+		cl_log(LOG_INFO, "Waiting to sign in with cluster ...");
 		sleep(reconnect_msec / 1000);
 	}
 #endif
