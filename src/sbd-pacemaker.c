@@ -86,6 +86,13 @@ int local_id = 0;
 struct timespec t_last_quorum;
 #endif
 
+#define LOGONCE(state, lvl, fmt, args...) do {	\
+	if (last_state != state) {		\
+		cl_log(lvl, fmt, ##args);	\
+		last_state = state;		\
+	}					\
+	} while(0)
+
 cib_t *cib = NULL;
 xmlNode *current_cib = NULL;
 
@@ -104,6 +111,7 @@ mon_timer_popped(gpointer data)
 	rc = cib_connect(TRUE);
 
 	if (rc != 0) {
+		cl_log(LOG_WARNING, "CIB reconnect failed: %d", rc);
 		timer_id_reconnect = g_timeout_add(reconnect_msec, mon_timer_popped, NULL);
 		set_pcmk_health(0);
 	}
@@ -114,6 +122,7 @@ static void
 mon_cib_connection_destroy(gpointer user_data)
 {
 	if (cib) {
+		cl_log(LOG_WARNING, "Disconnected from CIB");
 		set_pcmk_health(0);
 		/* Reconnecting */
 		cib->cmds->signoff(cib);
@@ -329,13 +338,6 @@ servant_pcmk(const char *diskname, const void* argp)
 	clean_up(0);
 	return 0;                   /* never reached */
 }
-
-#define LOGONCE(state, lvl, fmt, args...) do {	\
-	if (last_state != state) {		\
-		cl_log(lvl, fmt, ##args);	\
-		last_state = state;		\
-	}					\
-	} while(0)
 
 static int
 compute_status(pe_working_set_t * data_set)
