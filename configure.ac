@@ -58,35 +58,13 @@ AC_CHECK_LIB(pe_status, pe_find_node, , missing="yes")
 AC_CHECK_LIB(pe_rules, test_rule, , missing="yes")
 AC_CHECK_LIB(crmcluster, crm_peer_init, , missing="yes")
 
-if test "$missing" = "yes"; then
-   AC_MSG_ERROR([Missing required libraries or functions.])
-fi
-
-dnl pacemaker < 1.1.8
-AC_CHECK_HEADERS(pacemaker/crm/cluster/stack.h)
-
-dnl pacemaker < 1.1.8
-AC_CHECK_HEADERS(pacemaker/crm/common/cluster.h)
-
 dnl pacemaker >= 1.1.8
 AC_CHECK_HEADERS(pacemaker/crm/cluster.h)
+AC_CHECK_LIB(crmcommon, pcmk_strerror, , missing="yes")
+AC_CHECK_LIB(cib, cib_apply_patch_event, , missing="yes")
 
-dnl pacemaker >= 1.1.8
-AC_CHECK_LIB(crmcommon, pcmk_strerror)
-if test $ac_cv_lib_crmcommon_pcmk_strerror = yes; then
-   AC_DEFINE_UNQUOTED(HAVE_PCMK_STRERROR, 1, pacemaker has pcmk_strerror)
-fi
-
-dnl pacemaker >= 1.1.8
-AC_CHECK_LIB(cib, cib_apply_patch_event)
-if test $ac_cv_lib_cib_cib_apply_patch_event = yes; then
-   AC_DEFINE_UNQUOTED(HAVE_CIB_APPLY_PATCH_EVENT, 1, pacemaker has cib_apply_patch_event)
-fi
-
-dnl pacemaker < 1.1.8
-AC_CHECK_LIB(crmcluster, init_ais_connection_once)
-if test $ac_cv_lib_crmcluster_init_ais_connection_once = yes; then
-   AC_DEFINE_UNQUOTED(HAVE_INIT_AIS_CONNECTION_ONCE, 1, pacemaker has init_ais_connection_once)
+if test "$missing" = "yes"; then
+   AC_MSG_ERROR([Missing required libraries or functions.])
 fi
 
 AC_PATH_PROGS(POD2MAN, pod2man, pod2man)

@@ -169,11 +169,7 @@ cib_connect(gboolean full)
 {
 	int rc = 0;
 
-#if !HAVE_PCMK_STRERROR
-	CRM_CHECK(cib != NULL, return cib_missing);
-#else
 	CRM_CHECK(cib != NULL, return -EINVAL);
-#endif
 
 	cib_connected = 0;
 	if (cib->state != cib_connected_query && cib->state != cib_connected_command) {
@@ -190,11 +186,7 @@ cib_connect(gboolean full)
 		if (full) {
 			if (rc == 0) {
 				rc = cib->cmds->set_connection_dnotify(cib, mon_cib_connection_destroy);
-#if !HAVE_PCMK_STRERROR
-				if (rc == cib_NOTSUPPORTED) {
-#else
 				if (rc == -EPROTONOSUPPORT) {
-#endif
 					/* Notification setup failed, won't be able to reconnect after failure */
 					rc = 0;
 				}
@@ -385,48 +377,6 @@ crm_diff_update(const char *event, xmlNode * msg)
 	long now = time(NULL);
 	const char *op = NULL;
 
-#if !HAVE_CIB_APPLY_PATCH_EVENT
-	unsigned int log_level = LOG_INFO;
-
-	xmlNode *diff = NULL;
-	xmlNode *cib_last = NULL;
-
-	if (msg == NULL) {
-		crm_err("NULL update");
-		return;
-	}
-
-	crm_element_value_int(msg, F_CIB_RC, &rc);
-	op = crm_element_value(msg, F_CIB_OPERATION);
-	diff = get_message_xml(msg, F_CIB_UPDATE_RESULT);
-
-	if (rc < 0) {
-		log_level = LOG_WARNING;
-#  if !HAVE_PCMK_STRERROR
-		cl_log(log_level, "[%s] %s ABORTED: %s", event, op, cib_error2string(rc));
-#  else
-		cl_log(log_level, "[%s] %s ABORTED: %s", event, op, pcmk_strerror(rc));
-#  endif
-		return;
-	}
-
-	if (current_cib != NULL) {
-		cib_last = current_cib;
-		current_cib = NULL;
-		rc = cib_process_diff(op, cib_force_diff, NULL, NULL, diff, cib_last, &current_cib, NULL);
-
-		if (rc != 0) {
-#  if !HAVE_PCMK_STRERROR
-			crm_debug("Update didn't apply, requesting full copy: %s", cib_error2string(rc));
-#  else
-			crm_debug("Update didn't apply, requesting full copy: %s", pcmk_strerror(rc));
-#  endif
-			free_xml(current_cib);
-			current_cib = NULL;
-		}
-	}
-	free_xml(cib_last);
-#else
 	if (current_cib != NULL) {
 		xmlNode *cib_last = current_cib;
 		current_cib = NULL;
@@ -445,7 +395,6 @@ crm_diff_update(const char *event, xmlNode * msg)
 				return;
 		}
 	}
-#endif
 
 	if (current_cib == NULL) {
 		current_cib = get_cib_copy(cib);
@@ -542,11 +491,7 @@ servant_pcmk(const char *diskname, const void* argp)
 			if (exit_code != 0) {
 				sleep(reconnect_msec / 1000);
 			}
-#if !HAVE_PCMK_STRERROR
-		} while (exit_code == cib_connection);
-#else
 		} while (exit_code == -ENOTCONN);
-#endif
 
 		if (exit_code != 0) {
 			clean_up(-exit_code);
