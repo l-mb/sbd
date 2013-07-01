@@ -65,25 +65,25 @@
 #include <crm/cib.h>
 #include <crm/pengine/status.h>
 
-void clean_up(int rc);
-void crm_diff_update(const char *event, xmlNode * msg);
-gboolean mon_refresh_state(gpointer user_data);
-int cib_connect(gboolean full);
-void set_pcmk_health(int healthy);
-void notify_parent(void);
+static void clean_up(int rc);
+static void crm_diff_update(const char *event, xmlNode * msg);
+static gboolean mon_refresh_state(gpointer user_data);
+static int cib_connect(gboolean full);
+static void set_pcmk_health(int healthy);
+static void notify_parent(void);
 
-int reconnect_msec = 5000;
-GMainLoop *mainloop = NULL;
-guint timer_id_reconnect = 0;
-guint timer_id_notify = 0;
-
-int	pcmk_healthy = 0;
+static GMainLoop *mainloop = NULL;
+static guint timer_id_reconnect = 0;
+static guint timer_id_notify = 0;
+static int reconnect_msec = 1000;
+static int pcmk_healthy = 0;
+static int cib_connected = 0;
 
 #ifdef CHECK_AIS
-guint timer_id_ais = 0;
-enum cluster_type_e cluster_stack = pcmk_cluster_unknown;
-int local_id = 0;
-struct timespec t_last_quorum;
+static guint timer_id_ais = 0;
+static enum cluster_type_e cluster_stack = pcmk_cluster_unknown;
+static int local_id = 0;
+static struct timespec t_last_quorum;
 #endif
 
 #define LOGONCE(state, lvl, fmt, args...) do {	\
@@ -93,14 +93,14 @@ struct timespec t_last_quorum;
 	}					\
 	} while(0)
 
-cib_t *cib = NULL;
-xmlNode *current_cib = NULL;
+static cib_t *cib = NULL;
+static xmlNode *current_cib = NULL;
 
-long last_refresh = 0;
-crm_trigger_t *refresh_trigger = NULL;
+static long last_refresh = 0;
+static crm_trigger_t *refresh_trigger = NULL;
 
 static gboolean
-mon_timer_popped(gpointer data)
+mon_timer_reconnect(gpointer data)
 {
 	int rc = 0;
 
@@ -109,12 +109,14 @@ mon_timer_popped(gpointer data)
 	}
 
 	rc = cib_connect(TRUE);
-
 	if (rc != 0) {
 		cl_log(LOG_WARNING, "CIB reconnect failed: %d", rc);
-		timer_id_reconnect = g_timeout_add(reconnect_msec, mon_timer_popped, NULL);
-		set_pcmk_health(0);
+		timer_id_reconnect = g_timeout_add(reconnect_msec, mon_timer_reconnect, NULL);
+		/* set_pcmk_health(0); */
+	} else {
+		cl_log(LOG_INFO, "CIB reconnect successful");
 	}
+
 	return FALSE;
 }
 
@@ -123,11 +125,11 @@ mon_cib_connection_destroy(gpointer user_data)
 {
 	if (cib) {
 		cl_log(LOG_WARNING, "Disconnected from CIB");
-		set_pcmk_health(0);
-		/* Reconnecting */
+		/* set_pcmk_health(0); */
 		cib->cmds->signoff(cib);
-		timer_id_reconnect = g_timeout_add(reconnect_msec, mon_timer_popped, NULL);
+		timer_id_reconnect = g_timeout_add(reconnect_msec, mon_timer_reconnect, NULL);
 	}
+	cib_connected = 0;
 	return;
 }
 
@@ -138,16 +140,17 @@ mon_timer_notify(gpointer data)
 		g_source_remove(timer_id_notify);
 	}
 
-	/* TODO - do we really want to do this every loop interval? Lets
-	 * check how much CPU that takes ... */
-	if (1) {
-		free_xml(current_cib);
-		current_cib = get_cib_copy(cib);
-		mon_refresh_state(NULL);
-	} else {
-		notify_parent();
+	if (cib_connected) {
+		/* TODO - do we really want to do this every loop interval? Lets
+		 * check how much CPU that takes ... */
+		if (1) {
+			free_xml(current_cib);
+			current_cib = get_cib_copy(cib);
+			mon_refresh_state(NULL);
+		} else {
+			notify_parent();
+		}
 	}
-
 	timer_id_notify = g_timeout_add(timeout_loop * 1000, mon_timer_notify, NULL);
 	return FALSE;
 }
@@ -161,7 +164,7 @@ mon_shutdown(int nsig)
 	clean_up(0);
 }
 
-int
+static int
 cib_connect(gboolean full)
 {
 	int rc = 0;
@@ -172,6 +175,7 @@ cib_connect(gboolean full)
 	CRM_CHECK(cib != NULL, return -EINVAL);
 #endif
 
+	cib_connected = 0;
 	if (cib->state != cib_connected_query && cib->state != cib_connected_command) {
 
 		rc = cib->cmds->signon(cib, crm_system_name, cib_query);
@@ -206,6 +210,10 @@ cib_connect(gboolean full)
 				clean_up(-rc);
 			}
 		}
+	}
+	
+	if (!rc) {
+		cib_connected = 1;
 	}
 	return rc;
 }
@@ -266,78 +274,6 @@ ais_membership_dispatch(cpg_handle_t handle,
 	return;
 }
 #endif
-
-int
-servant_pcmk(const char *diskname, const void* argp)
-{
-	int exit_code = 0;
-	crm_cluster_t crm_cluster;
-
-	cl_log(LOG_INFO, "Monitoring Pacemaker health");
-	set_proc_title("sbd: watcher: Pacemaker");
-	reconnect_msec = 2000;
-
-	/* We don't want any noisy crm messages */
-	set_crm_log_level(LOG_CRIT);
-
-#ifdef CHECK_AIS
-	cluster_stack = get_cluster_type();
-
-	if (cluster_stack != pcmk_cluster_classic_ais) {
-		cl_log(LOG_ERR, "SBD currently only supports legacy AIS for quorum state poll");
-		/* TODO: Wonder if that's still true with the new code?
-		 * Should be merged completely, right? */
-	}
-
-        if(is_openais_cluster()) {
-            crm_cluster.destroy = ais_membership_destroy;
-	    crm_cluster.cpg.cpg_deliver_fn = ais_membership_dispatch;
-	    /* crm_cluster.cpg.cpg_confchg_fn = pcmk_cpg_membership; TODO? */
-	    crm_cluster.cpg.cpg_confchg_fn = NULL;
-        }
-
-	while (!crm_cluster_connect(&crm_cluster)) {
-		cl_log(LOG_INFO, "Waiting to sign in with cluster ...");
-		sleep(reconnect_msec / 1000);
-	}
-#endif
-
-	if (current_cib == NULL) {
-		cib = cib_new();
-
-		do {
-			exit_code = cib_connect(TRUE);
-
-			if (exit_code != 0) {
-				sleep(reconnect_msec / 1000);
-			}
-#if !HAVE_PCMK_STRERROR
-		} while (exit_code == cib_connection);
-#else
-		} while (exit_code == -ENOTCONN);
-#endif
-
-		if (exit_code != 0) {
-			clean_up(-exit_code);
-		}
-	}
-
-	mainloop = g_main_new(FALSE);
-
-	mainloop_add_signal(SIGTERM, mon_shutdown);
-	mainloop_add_signal(SIGINT, mon_shutdown);
-	refresh_trigger = mainloop_add_trigger(G_PRIORITY_LOW, mon_refresh_state, NULL);
-	timer_id_notify = g_timeout_add(timeout_loop * 1000, mon_timer_notify, NULL);
-#ifdef CHECK_AIS
-	timer_id_ais = g_timeout_add(timeout_loop * 1000, mon_timer_ais, NULL);
-#endif
-
-	g_main_run(mainloop);
-	g_main_destroy(mainloop);
-
-	clean_up(0);
-	return 0;                   /* never reached */
-}
 
 static int
 compute_status(pe_working_set_t * data_set)
@@ -410,14 +346,14 @@ out:
 	return 0;
 }
 
-void
+static void
 set_pcmk_health(int healthy)
 {
 	pcmk_healthy = healthy;
 	notify_parent();
 }
 
-void
+static void
 notify_parent(void)
 {
 	pid_t		ppid;
@@ -442,7 +378,7 @@ notify_parent(void)
 	}
 }
 
-void
+static void
 crm_diff_update(const char *event, xmlNode * msg)
 {
 	int rc = -1;
@@ -523,7 +459,7 @@ crm_diff_update(const char *event, xmlNode * msg)
 	}
 }
 
-gboolean
+static gboolean
 mon_refresh_state(gpointer user_data)
 {
 	xmlNode *cib_copy = copy_xml(current_cib);
@@ -532,25 +468,23 @@ mon_refresh_state(gpointer user_data)
 	last_refresh = time(NULL);
 
 	if (cli_config_update(&cib_copy, NULL, FALSE) == FALSE) {
-		cl_log(LOG_WARNING, "cli_config_update() failed - exiting abnormally");
+		cl_log(LOG_WARNING, "cli_config_update() failed - forcing reconnect to CIB");
 		if (cib) {
 			cib->cmds->signoff(cib);
 		}
-		clean_up(1);
-		return FALSE;
+	} else {
+		set_working_set_defaults(&data_set);
+		data_set.input = cib_copy;
+		cluster_status(&data_set);
+
+		compute_status(&data_set);
+
+		cleanup_calculations(&data_set);
 	}
-
-	set_working_set_defaults(&data_set);
-	data_set.input = cib_copy;
-	cluster_status(&data_set);
-
-	compute_status(&data_set);
-
-	cleanup_calculations(&data_set);
 	return TRUE;
 }
 
-void
+static void
 clean_up(int rc)
 {
 	if (cib != NULL) {
@@ -564,4 +498,76 @@ clean_up(int rc)
 	}
 	return;
 }
+
+int
+servant_pcmk(const char *diskname, const void* argp)
+{
+	int exit_code = 0;
+	crm_cluster_t crm_cluster;
+
+	cl_log(LOG_INFO, "Monitoring Pacemaker health");
+	set_proc_title("sbd: watcher: Pacemaker");
+
+	/* We don't want any noisy crm messages */
+	set_crm_log_level(LOG_CRIT);
+
+#ifdef CHECK_AIS
+	cluster_stack = get_cluster_type();
+
+	if (cluster_stack != pcmk_cluster_classic_ais) {
+		cl_log(LOG_ERR, "SBD currently only supports legacy AIS for quorum state poll");
+		/* TODO: Wonder if that's still true with the new code?
+		 * Should be merged completely, right? */
+	}
+
+        if(is_openais_cluster()) {
+            crm_cluster.destroy = ais_membership_destroy;
+	    crm_cluster.cpg.cpg_deliver_fn = ais_membership_dispatch;
+	    /* crm_cluster.cpg.cpg_confchg_fn = pcmk_cpg_membership; TODO? */
+	    crm_cluster.cpg.cpg_confchg_fn = NULL;
+        }
+
+	while (!crm_cluster_connect(&crm_cluster)) {
+		cl_log(LOG_INFO, "Waiting to sign in with cluster ...");
+		sleep(reconnect_msec / 1000);
+	}
+#endif
+
+	if (current_cib == NULL) {
+		cib = cib_new();
+
+		do {
+			exit_code = cib_connect(TRUE);
+
+			if (exit_code != 0) {
+				sleep(reconnect_msec / 1000);
+			}
+#if !HAVE_PCMK_STRERROR
+		} while (exit_code == cib_connection);
+#else
+		} while (exit_code == -ENOTCONN);
+#endif
+
+		if (exit_code != 0) {
+			clean_up(-exit_code);
+		}
+	}
+
+	mainloop = g_main_new(FALSE);
+
+	mainloop_add_signal(SIGTERM, mon_shutdown);
+	mainloop_add_signal(SIGINT, mon_shutdown);
+	refresh_trigger = mainloop_add_trigger(G_PRIORITY_LOW, mon_refresh_state, NULL);
+	timer_id_notify = g_timeout_add(timeout_loop * 1000, mon_timer_notify, NULL);
+#ifdef CHECK_AIS
+	timer_id_ais = g_timeout_add(timeout_loop * 1000, mon_timer_ais, NULL);
+#endif
+
+	g_main_run(mainloop);
+	g_main_destroy(mainloop);
+
+	clean_up(0);
+	return 0;                   /* never reached */
+}
+
 
