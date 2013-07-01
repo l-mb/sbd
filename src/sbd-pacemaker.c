@@ -532,10 +532,10 @@ mon_refresh_state(gpointer user_data)
 	last_refresh = time(NULL);
 
 	if (cli_config_update(&cib_copy, NULL, FALSE) == FALSE) {
+		cl_log(LOG_WARNING, "cli_config_update() failed - exiting abnormally");
 		if (cib) {
 			cib->cmds->signoff(cib);
 		}
-		/* TODO: Not good path, upgrade failed */
 		clean_up(1);
 		return FALSE;
 	}
