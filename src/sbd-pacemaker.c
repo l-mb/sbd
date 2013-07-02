@@ -94,7 +94,6 @@ static cib_t *cib = NULL;
 static xmlNode *current_cib = NULL;
 
 static long last_refresh = 0;
-/* static crm_trigger_t *refresh_trigger = NULL; */
 
 static gboolean
 mon_timer_reconnect(gpointer data)
@@ -246,16 +245,11 @@ ais_membership_dispatch(cpg_handle_t handle,
 	if (!data) {
 		return;
 	}
-
 	free(data);
 	data = NULL;
 
-	switch (kind) {
-	case crm_class_quorum:
-		break;
-	default:
+	if (kind != crm_class_quorum) {
 		return;
-		break;
 	}
 
 	DBGLOG(LOG_INFO, "AIS quorum state: %d", (int)crm_have_quorum);
@@ -281,10 +275,6 @@ compute_status(pe_working_set_t * data_set)
 	clock_gettime(CLOCK_MONOTONIC, &t_now);
 
 	if (dc == NULL) {
-		/* Means we don't know if we have quorum. Hrm. Probably needs to
-		* allow for this state for a period of time and then decide
-		* that we don't have quorum - TODO - should we skip
-		* notifying the parent? */
 		LOGONCE(1, LOG_INFO, "We don't have a DC right now.");
 		healthy = 2;
 		goto out;
