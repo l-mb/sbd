@@ -109,7 +109,7 @@ mon_timer_reconnect(gpointer data)
 	if (rc != 0) {
 		cl_log(LOG_WARNING, "CIB reconnect failed: %d", rc);
 		timer_id_reconnect = g_timeout_add(reconnect_msec, mon_timer_reconnect, NULL);
-		/* set_pcmk_health(0); */
+		set_pcmk_health(2);
 	} else {
 		cl_log(LOG_INFO, "CIB reconnect successful");
 	}
@@ -267,7 +267,7 @@ ais_membership_dispatch(cpg_handle_t handle,
 }
 #endif
 
-static int
+static void
 compute_status(pe_working_set_t * data_set)
 {
 	static int	updates = 0;
@@ -286,6 +286,7 @@ compute_status(pe_working_set_t * data_set)
 		* that we don't have quorum - TODO - should we skip
 		* notifying the parent? */
 		LOGONCE(1, LOG_INFO, "We don't have a DC right now.");
+		healthy = 2;
 		goto out;
 	} else {
 		const char *cib_quorum = crm_element_value(data_set->input, XML_ATTR_HAVE_QUORUM);
@@ -320,22 +321,20 @@ compute_status(pe_working_set_t * data_set)
 
 	if (node->details->unclean) {
 		LOGONCE(4, LOG_WARNING, "Node state: UNCLEAN");
-		goto out;
 	} else if (node->details->pending) {
 		LOGONCE(5, LOG_WARNING, "Node state: pending");
-		/* TODO ? */
+		healthy = 2;
 	} else if (node->details->online) {
 		LOGONCE(6, LOG_INFO, "Node state: online");
 		healthy = 1;
 	} else {
 		LOGONCE(7, LOG_WARNING, "Node state: UNKNOWN");
-		goto out;
 	}
 
 out:
 	set_pcmk_health(healthy);
 
-	return 0;
+	return;
 }
 
 static void
@@ -361,12 +360,19 @@ notify_parent(void)
 		do_reset();
 	}
 
-	if (pcmk_healthy) {
-		DBGLOG(LOG_INFO, "Notifying parent: healthy");
-		sigqueue(ppid, SIG_LIVENESS, signal_value);
-	} else {
-		DBGLOG(LOG_WARNING, "Notifying parent: UNHEALTHY");
-		sigqueue(ppid, SIG_PCMK_UNHEALTHY, signal_value);
+	switch (pcmk_healthy) {
+		case 2:
+			DBGLOG(LOG_INFO, "Not notifying parent: state transient");
+			break;
+		case 1:
+			DBGLOG(LOG_INFO, "Notifying parent: healthy");
+			sigqueue(ppid, SIG_LIVENESS, signal_value);
+			break;
+		case 0:
+		default:
+			DBGLOG(LOG_WARNING, "Notifying parent: UNHEALTHY");
+			sigqueue(ppid, SIG_PCMK_UNHEALTHY, signal_value);
+			break;
 	}
 }
 
