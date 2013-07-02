@@ -29,9 +29,6 @@
  * will eventually take the cluster below the quorum threshold, at which
  * time the remaining cluster nodes will all immediately suicide.
  *
- * - With the CIB refreshed every timeout_loop seconds, do we still need
- * to watch for CIB update notifications or can that be removed?
- *
  */
 
 #include "sbd.h"
@@ -67,7 +64,7 @@
 
 static void clean_up(int rc);
 static void crm_diff_update(const char *event, xmlNode * msg);
-static gboolean mon_refresh_state(gpointer user_data);
+static void mon_refresh_state(void);
 static int cib_connect(gboolean full);
 static void set_pcmk_health(int healthy);
 static void notify_parent(void);
@@ -97,7 +94,7 @@ static cib_t *cib = NULL;
 static xmlNode *current_cib = NULL;
 
 static long last_refresh = 0;
-static crm_trigger_t *refresh_trigger = NULL;
+/* static crm_trigger_t *refresh_trigger = NULL; */
 
 static gboolean
 mon_timer_reconnect(gpointer data)
@@ -125,7 +122,6 @@ mon_cib_connection_destroy(gpointer user_data)
 {
 	if (cib) {
 		cl_log(LOG_WARNING, "Disconnected from CIB");
-		/* set_pcmk_health(0); */
 		cib->cmds->signoff(cib);
 		timer_id_reconnect = g_timeout_add(reconnect_msec, mon_timer_reconnect, NULL);
 	}
@@ -136,19 +132,23 @@ mon_cib_connection_destroy(gpointer user_data)
 static gboolean
 mon_timer_notify(gpointer data)
 {
+	static int counter = 0;
+	int counter_max = timeout_watchdog / timeout_loop;
+
 	if (timer_id_notify > 0) {
 		g_source_remove(timer_id_notify);
 	}
 
 	if (cib_connected) {
-		/* TODO - do we really want to do this every loop interval? Lets
-		 * check how much CPU that takes ... */
-		if (1) {
+		if (counter == counter_max) {
 			free_xml(current_cib);
 			current_cib = get_cib_copy(cib);
-			mon_refresh_state(NULL);
+			mon_refresh_state();
+			counter = 0;
 		} else {
+			int rc = cib->cmds->noop(cib, 0);
 			notify_parent();
+			counter++;
 		}
 	}
 	timer_id_notify = g_timeout_add(timeout_loop * 1000, mon_timer_notify, NULL);
@@ -181,7 +181,7 @@ cib_connect(gboolean full)
 		}
 
 		current_cib = get_cib_copy(cib);
-		mon_refresh_state(NULL);
+		mon_refresh_state();
 
 		if (full) {
 			if (rc == 0) {
@@ -400,16 +400,11 @@ crm_diff_update(const char *event, xmlNode * msg)
 		current_cib = get_cib_copy(cib);
 	}
 
-	if ((now - last_refresh) > (reconnect_msec / 1000)) {
-		/* Force a refresh */
-		mon_refresh_state(NULL);
-	} else {
-		mainloop_set_trigger(refresh_trigger);
-	}
+	mon_refresh_state();
 }
 
-static gboolean
-mon_refresh_state(gpointer user_data)
+static void
+mon_refresh_state(void)
 {
 	xmlNode *cib_copy = copy_xml(current_cib);
 	pe_working_set_t data_set;
@@ -430,7 +425,7 @@ mon_refresh_state(gpointer user_data)
 
 		cleanup_calculations(&data_set);
 	}
-	return TRUE;
+	return;
 }
 
 static void
@@ -502,7 +497,6 @@ servant_pcmk(const char *diskname, const void* argp)
 
 	mainloop_add_signal(SIGTERM, mon_shutdown);
 	mainloop_add_signal(SIGINT, mon_shutdown);
-	refresh_trigger = mainloop_add_trigger(G_PRIORITY_LOW, mon_refresh_state, NULL);
 	timer_id_notify = g_timeout_add(timeout_loop * 1000, mon_timer_notify, NULL);
 #ifdef CHECK_AIS
 	timer_id_ais = g_timeout_add(timeout_loop * 1000, mon_timer_ais, NULL);
