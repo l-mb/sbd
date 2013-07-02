@@ -109,7 +109,6 @@ mon_timer_reconnect(gpointer data)
 	if (rc != 0) {
 		cl_log(LOG_WARNING, "CIB reconnect failed: %d", rc);
 		timer_id_reconnect = g_timeout_add(reconnect_msec, mon_timer_reconnect, NULL);
-		set_pcmk_health(2);
 	} else {
 		cl_log(LOG_INFO, "CIB reconnect successful");
 	}
@@ -123,6 +122,7 @@ mon_cib_connection_destroy(gpointer user_data)
 	if (cib) {
 		cl_log(LOG_WARNING, "Disconnected from CIB");
 		cib->cmds->signoff(cib);
+		set_pcmk_health(2);
 		timer_id_reconnect = g_timeout_add(reconnect_msec, mon_timer_reconnect, NULL);
 	}
 	cib_connected = 0;
