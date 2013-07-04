@@ -20,7 +20,7 @@ dnl     checks for library functions
 dnl     checks for system services
 
 AC_INIT([sbd], 
-	[1.0],
+	[1.2.0],
 	[lmb@suse.com])
 AC_CANONICAL_HOST
 AC_CONFIG_AUX_DIR(.)

@@ -1,0 +1,15 @@
+2013-07-04 - v1.2.0
+
+This is, finally, a public release after several years of development
+and living mostly in SUSE Linux Enterprise High Availability 11 (and
+previously, cluster-glue).
+
+"sbd" ("shared-storage based death", named originally in deference to
+Novell Cluster Suite's "split brain detector") is a highly reliable
+fencing mechanism that utilizes shared storage for arbitration and
+exchange of fencing commands.
+
+New in this release:
+- Initial public release
+- Move to github
+
