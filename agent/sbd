@@ -28,6 +28,9 @@ sbd_check_device() {
 }
 
 sbd_validate_timeout() {
+	case "$timeout_bypass" in
+	    yes|true|1|YES|TRUE|ja|on|ON) return ;;
+	esac
 	crm_timeout=$[$(crm_attribute -t crm_config -G -n stonith-timeout -d 20s -q | sed -e 's/\(.*\)s/\1/' -e 's/\(.*\)m/\1*60/')]
 	sbd_timeout=$(sbd -d $sbd_device dump | perl -ne 'if (/msgwait.*: (\d+)/) { print "$1\n"; }' | head -n 1)
 	if [ "$sbd_timeout" -eq "0" ]; then
@@ -35,17 +38,20 @@ sbd_validate_timeout() {
 	fi
 
 	sbd_timeout_min=$[$sbd_timeout*12/10]
-	sbd_timeout_suggested=$[$sbd_timeout*15/10]
+	if [ "$sbd_timeout_min" -lt 20 ]; then
+		sbd_timeout_min=20
+	fi
+	sbd_timeout_suggested=$[$sbd_timeout_min*12/10]
 
 	if [ "$crm_timeout" -lt "$sbd_timeout_min" ]; then
-		ha_log.sh err "The CIB property stonith-timeout is set too low for sbd to succeed"
-		ha_log.sh err "Recommended value is $sbd_timeout_suggested"
-		# TODO: can we automatically call crm_attribute here to
-		# update the value ...?
+		ha_log.sh err "The CIB property stonith-timeout is set too low for sbd to ever succeed"
+		ha_log.sh err "Recommended value is $sbd_timeout_suggested, updating configuration."
+		crm_attribute -t crm_config -n stonith-timeout -v $sbd_timeout_suggested
 		exit 1
 	fi
+	ha_log.sh err "Why am I here?"
 }
-
+	
 case $1 in
 gethosts)
     sbd_check_device
@@ -75,7 +81,7 @@ on)
     exit 1
     ;;
 getconfignames)
-    echo "sbd_device crashdump"
+    echo "sbd_device crashdump timeout_bypass"
     exit 0
     ;;
 getinfo-devid)
@@ -137,6 +143,22 @@ If not specified, will default to the value from /etc/sysconfig/sbd.
 
 </longdesc>
 </parameter>
+
+<parameter name="timeout_bypass">
+<content type="boolean" />
+<shortdesc lang="en">
+Permit a seemingly too short stonith-timeout
+</shortdesc>
+<longdesc lang="en">
+The sbd agent will try to detect a too short stonith-timeout (relative
+to msgwait) in the Pacemaker configuration and automatically correct
+it.
+
+Should that logic fail in your environment or you have legitimate need
+to use a shorter timeout, you can disable it via this parameter.
+</longdesc>
+</parameter>
+
 </parameters>
 SSHXML
     exit 0
