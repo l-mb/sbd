@@ -542,6 +542,10 @@ timeout is 60 seconds, this is a possible configuration:
 	property stonith-enabled="true"
 	property stonith-timeout="120s"
 
+B<Caution>: if I<stonith-timeout> is too low for I<msgwait> and the
+system overhead, sbd will never be able to successfully complete a fence
+request. This will create a fencing loop.
+
 =head1 Management tasks
 
 =head2 Recovering from temporary SBD device outage
