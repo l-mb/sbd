@@ -49,7 +49,6 @@ sbd_validate_timeout() {
 		crm_attribute -t crm_config -n stonith-timeout -v $sbd_timeout_suggested
 		exit 1
 	fi
-	ha_log.sh err "Why am I here?"
 }
 	
 case $1 in
