@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Lars Marowsky-Bree <lmb@suse.de>
+ * Copyright (C) 2013 Lars Marowsky-Bree <lmb@suse.com>
  * 
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public

@@ -1,6 +1,5 @@
-
 /* 
- * Copyright (C) 2012 Lars Marowsky-Bree <lmb@suse.com>
+ * Copyright (C) 2013 Lars Marowsky-Bree <lmb@suse.com>
  * 
  * Based on crm_mon.c, which was:
  * Copyright (C) 2004 Andrew Beekhof <andrew@beekhof.net>
