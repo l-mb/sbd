@@ -63,6 +63,7 @@ usage(void)
 "-W		Use watchdog (recommended) (watch only)\n"
 "-w <dev>	Specify watchdog device (optional) (watch only)\n"
 "-T		Do NOT initialize the watchdog timeout (watch only)\n"
+"-p <path>	Write pidfile to the specified path (watch only)\n"
 "-v		Enable some verbose debug logging (optional)\n"
 "\n"
 "-1 <N>		Set watchdog timeout to N seconds (optional, create only)\n"

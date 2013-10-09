@@ -26,6 +26,7 @@ static int	servant_restart_count = 1;
 static int	servant_inform_parent = 0;
 static int	check_pcmk = 0;
 static int	start_mode = 0;
+static char*	pidfile = NULL;
 
 int quorum_write(int good_servants)
 {
@@ -591,6 +592,12 @@ void inquisitor_child(void)
 
 	set_proc_title("sbd: inquisitor");
 
+	if (pidfile) {
+		if (cl_lock_pidfile(pidfile) < 0) {
+			exit(1);
+		}
+	}
+
 	sigemptyset(&procmask);
 	sigaddset(&procmask, SIGCHLD);
 	sigaddset(&procmask, SIG_LIVENESS);
@@ -673,9 +680,12 @@ void inquisitor_child(void)
 		}
 
 		if (exiting) {
-			if (check_all_dead())
+			if (check_all_dead()) {
+				if (pidfile) {
+					cl_unlock_pidfile(pidfile);
+				}
 				exit(0);
-			else
+			} else
 				continue;
 		}
 
@@ -933,7 +943,7 @@ int main(int argc, char **argv, char **envp)
 
 	sbd_get_uname();
 
-	while ((c = getopt(argc, argv, "C:DPRTWZhvw:d:n:1:2:3:4:5:t:I:F:S:")) != -1) {
+	while ((c = getopt(argc, argv, "C:DPRTWZhvw:d:n:p:1:2:3:4:5:t:I:F:S:")) != -1) {
 		switch (c) {
 		case 'D':
 			break;
@@ -962,7 +972,7 @@ int main(int argc, char **argv, char **envp)
 			cl_log(LOG_INFO, "Watchdog enabled.");
 			break;
 		case 'w':
-			watchdogdev = optarg;
+			watchdogdev = strdup(optarg);
 			break;
 		case 'd':
 			recruit_servant(optarg, 0);
@@ -971,8 +981,12 @@ int main(int argc, char **argv, char **envp)
 			check_pcmk = 1;
 			break;
 		case 'n':
-			local_uname = optarg;
+			local_uname = strdup(optarg);
 			cl_log(LOG_INFO, "Overriding local hostname to %s", local_uname);
+			break;
+		case 'p':
+			pidfile = strdup(optarg);
+			cl_log(LOG_INFO, "pidfile set to %s", pidfile);
 			break;
 		case 'C':
 			timeout_watchdog_crashdump = atoi(optarg);

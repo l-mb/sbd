@@ -19,6 +19,7 @@
 #include <arpa/inet.h>
 #include <asm/unistd.h>
 #include <clplumbing/cl_log.h>
+#include <clplumbing/cl_pidfile.h>
 #include <clplumbing/cl_reboot.h>
 #include <clplumbing/coredumps.h>
 #include <clplumbing/realtime.h>

@@ -235,6 +235,10 @@ Enable use of the system watchdog. This is I<highly> recommended.
 This can be used to override the default watchdog device used and should not
 usually be necessary.
 
+=item B<-p> F</var/run/sbd.pid>
+
+This option can be used to specify a pidfile for the main sbd process.
+
 =item B<-F> I<N>
 
 Number of failures before a failing servant process will not be restarted
