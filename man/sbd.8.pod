@@ -171,14 +171,11 @@ This command will make C<sbd> start in daemon mode. It will constantly monitor
 the message slot of the local node for incoming messages, reachability, and
 optionally take Pacemaker's state into account.
 
+C<sbd> B<must> be started on boot before the cluster stack! See below
+for enabling this according to your boot environment.
+
 The options for this mode are rarely specified directly on the
-commandline directly, but most frequently set via F</etc/sysconfig/sbd>. The
-C<openais> or C<corosync> system start-up scripts take care of starting
-or stopping C<sbd> as required before starting the rest of the cluster
-stack. Thus, the daemon is brought online on each node before the rest of the
-cluster stack is started, and terminated only after all other cluster
-components have been shut down - ensuring that cluster resources are
-never activated without SBD supervision.
+commandline directly, but most frequently set via F</etc/sysconfig/sbd>.
 
 It also constantly monitors connectivity to the storage device, and
 self-fences in case the partition becomes unreachable, guaranteeing that it
@@ -485,13 +482,32 @@ different security domains.
 
 =head2 Configure SBD to start on boot
 
-If configured via F</etc/sysconfig/sbd>, the cluster stack's init script
-will automatically start and stop C<sbd> as required. In this file, you
-must specify the device(s) used, as well as any options to pass to the
-daemon:
+On systems using C<sysvinit>, the C<openais> or C<corosync> system
+start-up scripts must handle starting or stopping C<sbd> as required
+before starting the rest of the cluster stack.
+
+For C<systemd>, sbd simply has to be enabled using
+
+	systemctl enable sbd.service
+
+The daemon is brought online on each node before the Pacemaker is
+started, and terminated only after all other cluster components have
+been shut down - ensuring that cluster resources are never activated
+without SBD supervision.
+
+=head2 Configuration via sysconfig
+
+The system instance of C<sbd> is configured via F</etc/sysconfig/sbd>.
+In this file, you must specify the device(s) used, as well as any
+options to pass to the daemon:
 
 	SBD_DEVICE="/dev/sda1;/dev/sdb1;/dev/sdc1"
-	SBD_OPTS="-W -P"
+	SBD_PACEMAKER="true"
+
+C<sbd> will fail to start if no C<SBD_DEVICE> is specified. See the
+installed template for more options that can be configured here.
+
+=head2 Testing the sbd installation
 
 After a restart of the cluster stack on this node, you can now try
 sending a test message to it as root, from this or any other node:
@@ -505,8 +521,8 @@ The node will acknowledge the receipt of the message in the system logs:
 This confirms that SBD is indeed up and running on the node, and that it
 is ready to receive messages.
 
-Make sure that F</etc/sysconfig/sbd> is identical on all cluster nodes,
-and that all cluster nodes are running the daemon!
+Make B<sure> that F</etc/sysconfig/sbd> is identical on all cluster
+nodes, and that all cluster nodes are running the daemon.
 
 =head1 Pacemaker CIB integration
 
@@ -534,7 +550,6 @@ then, every fence request will cause the node to dump core. You can
 enable this via the C<crashdump="true"> parameter on the fencing
 resource. This is B<not> recommended for production use, but only for
 debugging phases.
-
 
 =head2 General cluster properties
 
