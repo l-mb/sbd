@@ -1,0 +1,39 @@
+## Type: string
+## Default: ""
+#
+# SBD_DEVICE specifies the devices to use for exchanging sbd messages
+# and to monitor. If specifying more than one path, use ";" as
+# separator.
+#
+SBD_DEVICE=""
+
+## Type: yesno
+## Default: yes
+#
+# Whether to enable the pacemaker integration.
+#
+SBD_PACEMAKER=
+
+## Type: list(always,clean)
+## Default: always
+#
+# Specify the start mode for sbd. Setting this to "clean" will only
+# allow sbd to start if it was not previously fenced. See the -S option
+# in the man page.
+#
+SBD_STARTMODE=
+
+## Type: yesno
+## Default: yes
+#
+# Whether to use a watchdog.
+#
+SBD_WATCHDOG=
+
+## Type: string
+## Default: ""
+#
+# Additional options for starting sbd
+#
+SBD_OPTS=
+
