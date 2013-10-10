@@ -79,6 +79,7 @@ static int cib_connected = 0;
 static guint timer_id_ais = 0;
 static enum cluster_type_e cluster_stack = pcmk_cluster_unknown;
 static struct timespec t_last_quorum;
+static int check_ais = 0;
 #endif
 
 #define LOGONCE(state, lvl, fmt, args...) do {	\
@@ -289,19 +290,21 @@ compute_status(pe_working_set_t * data_set)
 	}
 
 #ifdef CHECK_AIS
-	int quorum_age = t_now.tv_sec - t_last_quorum.tv_sec;
+	if (check_ais) {
+		int quorum_age = t_now.tv_sec - t_last_quorum.tv_sec;
 
-	if (quorum_age > (int)(timeout_io+timeout_loop)) {
-		if (t_last_quorum.tv_sec != 0)
-			LOGONCE(2, LOG_WARNING, "AIS: Quorum outdated!");
-		goto out;
-	}
+		if (quorum_age > (int)(timeout_io+timeout_loop)) {
+			if (t_last_quorum.tv_sec != 0)
+				LOGONCE(2, LOG_WARNING, "AIS: Quorum outdated!");
+			goto out;
+		}
 
-	if (crm_have_quorum) {
-		DBGLOG(LOG_INFO, "AIS: We have quorum!");
-	} else {
-		LOGONCE(8, LOG_WARNING, "AIS: We do NOT have quorum!");
-		goto out;
+		if (crm_have_quorum) {
+			DBGLOG(LOG_INFO, "AIS: We have quorum!");
+		} else {
+			LOGONCE(8, LOG_WARNING, "AIS: We do NOT have quorum!");
+			goto out;
+		}
 	}
 #endif
 
@@ -452,21 +455,21 @@ servant_pcmk(const char *diskname, const void* argp)
 	cluster_stack = get_cluster_type();
 
 	if (cluster_stack != pcmk_cluster_classic_ais) {
-		cl_log(LOG_ERR, "SBD currently only supports legacy AIS for quorum state poll");
-		/* TODO: Wonder if that's still true with the new code?
-		 * Should be merged completely, right? */
-	}
+		check_ais = 0;
+	} else {
+		check_ais = 1;
+		cl_log(LOG_INFO, "Legacy plug-in detected, AIS quorum check enabled");
+		if(is_openais_cluster()) {
+		    crm_cluster.destroy = ais_membership_destroy;
+		    crm_cluster.cpg.cpg_deliver_fn = ais_membership_dispatch;
+		    /* crm_cluster.cpg.cpg_confchg_fn = pcmk_cpg_membership; TODO? */
+		    crm_cluster.cpg.cpg_confchg_fn = NULL;
+		}
 
-        if(is_openais_cluster()) {
-            crm_cluster.destroy = ais_membership_destroy;
-	    crm_cluster.cpg.cpg_deliver_fn = ais_membership_dispatch;
-	    /* crm_cluster.cpg.cpg_confchg_fn = pcmk_cpg_membership; TODO? */
-	    crm_cluster.cpg.cpg_confchg_fn = NULL;
-        }
-
-	while (!crm_cluster_connect(&crm_cluster)) {
-		cl_log(LOG_INFO, "Waiting to sign in with cluster ...");
-		sleep(reconnect_msec / 1000);
+		while (!crm_cluster_connect(&crm_cluster)) {
+			cl_log(LOG_INFO, "Waiting to sign in with cluster ...");
+			sleep(reconnect_msec / 1000);
+		}
 	}
 #endif
 
@@ -492,7 +495,9 @@ servant_pcmk(const char *diskname, const void* argp)
 	mainloop_add_signal(SIGINT, mon_shutdown);
 	timer_id_notify = g_timeout_add(timeout_loop * 1000, mon_timer_notify, NULL);
 #ifdef CHECK_AIS
-	timer_id_ais = g_timeout_add(timeout_loop * 1000, mon_timer_ais, NULL);
+	if (check_ais) {
+		timer_id_ais = g_timeout_add(timeout_loop * 1000, mon_timer_ais, NULL);
+	}
 #endif
 
 	g_main_run(mainloop);
