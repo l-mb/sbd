@@ -78,7 +78,6 @@ static int cib_connected = 0;
 #ifdef CHECK_AIS
 static guint timer_id_ais = 0;
 static enum cluster_type_e cluster_stack = pcmk_cluster_unknown;
-static int local_id = 0;
 static struct timespec t_last_quorum;
 #endif
 
@@ -144,7 +143,7 @@ mon_timer_notify(gpointer data)
 			mon_refresh_state();
 			counter = 0;
 		} else {
-			int rc = cib->cmds->noop(cib, 0);
+			cib->cmds->noop(cib, 0);
 			notify_parent();
 			counter++;
 		}
@@ -369,7 +368,6 @@ static void
 crm_diff_update(const char *event, xmlNode * msg)
 {
 	int rc = -1;
-	long now = time(NULL);
 	const char *op = NULL;
 
 	if (current_cib != NULL) {
