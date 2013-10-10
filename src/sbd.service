@@ -1,0 +1,24 @@
+[Unit]
+Description=Shared-storage based fencing daemon
+Before=pacemaker.service
+After=corosync.service
+PartOf=pacemaker.service
+RefuseManualStop=true
+RefuseManualStart=true
+
+[Service]
+Type=forking
+ExecStart=/usr/share/sbd/sbd.sh start
+ExecStop=/usr/share/sbd/sbd.sh stop
+PIDFile=/var/run/sbd.pid
+Restart=no
+# Could this benefit from exit codes for restart?
+# Does this need to be set to msgwait * 1.2?
+# TimeoutSec=
+# If SBD crashes, it'll very likely suicide immediately due to the
+# hardware watchdog. But one can always try.
+Restart=on-abort
+
+[Install]
+RequiredBy=pacemaker.service
+
