@@ -215,6 +215,7 @@ void servant_exit(void)
 int servant(const char *diskname, const void* argp)
 {
 	struct sector_mbox_s *s_mbox = NULL;
+	struct sector_node_s *s_node = NULL;
 	struct sector_header_s	*s_header = NULL;
 	int mbox;
 	int rc = 0;
@@ -271,6 +272,13 @@ int servant(const char *diskname, const void* argp)
 		rc = -1;
 		goto out;
 	}
+	s_node = sector_alloc();
+	if (slot_read(st, mbox, s_node) < 0) {
+		cl_log(LOG_ERR, "Unable to read node entry on %s",
+				diskname);
+		exit(1);
+	}
+
 	DBGLOG(LOG_INFO, "Monitoring slot %d on disk %s", mbox, diskname);
 	if (s_header->minor_version == 0) {
 		set_proc_title("sbd: watcher: %s - slot: %d", diskname, mbox);
@@ -308,6 +316,9 @@ int servant(const char *diskname, const void* argp)
 	memset(&signal_value, 0, sizeof(signal_value));
 
 	while (1) {
+		struct sector_header_s	*s_header_retry = NULL;
+		struct sector_header_s	*s_node_retry = NULL;
+
 		t0 = time(NULL);
 		sleep(timeout_loop);
 
@@ -318,6 +329,32 @@ int servant(const char *diskname, const void* argp)
 			 * self-fence. */
 			do_reset();
 		}
+
+		/* These attempts are, by definition, somewhat racy. If
+		 * the device is wiped out or corrupted between here and
+		 * us reading our mbox, there is nothing we can do about
+		 * that. But at least we tried. */
+		s_header_retry = header_get(st);
+		if (!s_header_retry) {
+			cl_log(LOG_ERR, "No longer found a valid header on %s", diskname);
+			exit(1);
+		}
+		if (memcmp(s_header, s_header_retry, sizeof(*s_header)) != 0) {
+			cl_log(LOG_ERR, "Header on %s changed since start-up!", diskname);
+			exit(1);
+		}
+		free(s_header_retry);
+
+		s_node_retry = sector_alloc();
+		if (slot_read(st, mbox, s_node_retry) < 0) {
+			cl_log(LOG_ERR, "slot read failed in servant.");
+			exit(1);
+		}
+		if (memcmp(s_node, s_node_retry, sizeof(*s_node)) != 0) {
+			cl_log(LOG_ERR, "Node entry on %s changed since start-up!", diskname);
+			exit(1);
+		}
+		free(s_node_retry);
 
 		if (mbox_read(st, mbox, s_mbox) < 0) {
 			cl_log(LOG_ERR, "mbox read failed in servant.");
