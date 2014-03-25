@@ -317,7 +317,7 @@ int servant(const char *diskname, const void* argp)
 
 	while (1) {
 		struct sector_header_s	*s_header_retry = NULL;
-		struct sector_header_s	*s_node_retry = NULL;
+		struct sector_node_s	*s_node_retry = NULL;
 
 		t0 = time(NULL);
 		sleep(timeout_loop);
@@ -536,25 +536,36 @@ int check_timeout_inconsistent(void)
 	struct sbd_context *st;
 	struct sector_header_s *hdr_cur = 0, *hdr_last = 0;
 	struct servants_list_item* s;
+	struct timespec t_0, t_now;
+	int t_wait = 0;
 	int inconsistent = 0;
 
-	for (s = servants_leader; s; s = s->next) {
-		st = open_device(s->devname);
-		if (!st)
-			continue;
-		hdr_cur = header_get(st);
-		close_device(st);
-		if (!hdr_cur)
-			continue;
-		if (hdr_last) {
-			if (hdr_last->timeout_watchdog != hdr_cur->timeout_watchdog
-			    || hdr_last->timeout_allocate != hdr_cur->timeout_allocate
-			    || hdr_last->timeout_loop != hdr_cur->timeout_loop
-			    || hdr_last->timeout_msgwait != hdr_cur->timeout_msgwait)
-				inconsistent = 1;
-			free(hdr_last);
+	clock_gettime(CLOCK_MONOTONIC, &t_0);
+
+	while (!hdr_last && t_wait < timeout_startup) {
+		for (s = servants_leader; s; s = s->next) {
+			st = open_device(s->devname);
+			if (!st)
+				continue;
+			hdr_cur = header_get(st);
+			close_device(st);
+			if (!hdr_cur)
+				continue;
+			if (hdr_last) {
+				if (hdr_last->timeout_watchdog != hdr_cur->timeout_watchdog
+				    || hdr_last->timeout_allocate != hdr_cur->timeout_allocate
+				    || hdr_last->timeout_loop != hdr_cur->timeout_loop
+				    || hdr_last->timeout_msgwait != hdr_cur->timeout_msgwait)
+					inconsistent = 1;
+				free(hdr_last);
+			}
+			hdr_last = hdr_cur;
 		}
-		hdr_last = hdr_cur;
+		clock_gettime(CLOCK_MONOTONIC, &t_now);
+		t_wait = t_now.tv_sec - t_0.tv_sec;
+		if (!hdr_last) {
+			sleep(timeout_loop);
+		}
 	}
 
 	if (hdr_last) {
@@ -563,7 +574,8 @@ int check_timeout_inconsistent(void)
 		timeout_loop = hdr_last->timeout_loop;
 		timeout_msgwait = hdr_last->timeout_msgwait;
 	} else { 
-		cl_log(LOG_ERR, "No devices were available at start-up.");
+		cl_log(LOG_ERR, "No devices were available at start-up within %i seconds.",
+				timeout_startup);
 		exit(1);
 	}
 
@@ -980,7 +992,7 @@ int main(int argc, char **argv, char **envp)
 
 	sbd_get_uname();
 
-	while ((c = getopt(argc, argv, "C:DPRTWZhvw:d:n:p:1:2:3:4:5:t:I:F:S:")) != -1) {
+	while ((c = getopt(argc, argv, "C:DPRTWZhvw:d:n:p:1:2:3:4:5:t:I:F:S:s:")) != -1) {
 		switch (c) {
 		case 'D':
 			break;
@@ -995,6 +1007,10 @@ int main(int argc, char **argv, char **envp)
 		case 'S':
 			start_mode = atoi(optarg);
 			cl_log(LOG_INFO, "Start mode set to: %d", (int)start_mode);
+			break;
+		case 's':
+			timeout_startup = atoi(optarg);
+			cl_log(LOG_INFO, "Start timeout set to: %d", (int)timeout_startup);
 			break;
 		case 'v':
 			debug = 1;

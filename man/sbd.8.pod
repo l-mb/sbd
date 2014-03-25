@@ -276,6 +276,15 @@ node must be manually "unfenced" by sending an empty message to it:
 
 	sbd -d /dev/sda1 message node1 clear
 
+=item B<-s> I<N>
+
+Set the start-up wait time for devices. (Defaults to I<120>.)
+
+Dynamic block devices such as iSCSI might not be fully initialized and
+present yet. This allows to set a timeout for waiting for devices to
+appear on start-up. If set to 0, start-up will be aborted immediately if
+no devices are available.
+
 =item B<-Z>
 
 Enable trace mode. B<Warning: this is unsafe for production, use at your

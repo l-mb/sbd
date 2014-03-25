@@ -29,6 +29,7 @@ int		timeout_allocate 	= 2;
 int		timeout_loop	    	= 1;
 int		timeout_msgwait		= 10;
 int		timeout_io		= 3;
+int		timeout_startup		= 120;
 
 int	watchdog_use		= 0;
 int	watchdog_set_timeout	= 1;
@@ -63,6 +64,7 @@ usage(void)
 "-W		Use watchdog (recommended) (watch only)\n"
 "-w <dev>	Specify watchdog device (optional) (watch only)\n"
 "-T		Do NOT initialize the watchdog timeout (watch only)\n"
+"-S <0|1>	Set start mode if the node was previously fenced (watch only)\n"
 "-p <path>	Write pidfile to the specified path (watch only)\n"
 "-v		Enable some verbose debug logging (optional)\n"
 "\n"
@@ -74,6 +76,7 @@ usage(void)
 "			(default is 3, set to 0 to disable)\n"
 "-C <N>		Watchdog timeout to set before crashdumping (def: 240s, optional)\n"
 "-I <N>		Async IO read timeout (defaults to 3 * loop timeout, optional)\n"
+"-s <N>		Timeout to wait for devices to become available (def: 120s)\n"
 "-t <N>		Dampening delay before faulty servants are restarted (optional)\n"
 "			(default is 5, set to 0 to disable)\n"
 "-F <N>		# of failures before a servant is considered faulty (optional)\n"

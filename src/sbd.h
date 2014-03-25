@@ -160,6 +160,7 @@ extern int      timeout_allocate;
 extern int      timeout_loop;
 extern int      timeout_msgwait;
 extern int      timeout_io;
+extern int      timeout_startup;
 extern int  watchdog_use;
 extern int  watchdog_set_timeout;
 extern int  skip_rt;
