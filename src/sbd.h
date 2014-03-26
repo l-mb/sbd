@@ -117,7 +117,7 @@ int watchdog_tickle(void);
 int watchdog_init(void);
 void sysrq_init(void);
 void watchdog_close(void);
-struct sbd_context *open_device(const char* devname);
+struct sbd_context *open_device(const char* devname, int loglevel);
 void close_device(struct sbd_context *st);
 signed char cmd2char(const char *cmd);
 void * sector_alloc(void);

@@ -74,7 +74,7 @@ int init_devices()
 	for (s = servants_leader; s; s = s->next) {
 		fprintf(stdout, "Initializing device %s\n",
 				s->devname);
-		st = open_device(s->devname);
+		st = open_device(s->devname, LOG_ERR);
 		if (!st) {
 			return -1;
 		}
@@ -95,7 +95,7 @@ int slot_msg_wrapper(const char* devname, const void* argp)
 	struct sbd_context *st;
 	const struct slot_msg_arg_t* arg = (const struct slot_msg_arg_t*)argp;
 
-        st = open_device(devname);
+        st = open_device(devname, LOG_WARNING);
         if (!st) 
 		return -1;
 	cl_log(LOG_INFO, "Delivery process handling %s",
@@ -111,7 +111,7 @@ int slot_ping_wrapper(const char* devname, const void* argp)
 	const char* name = (const char*)argp;
 	struct sbd_context *st;
 
-	st = open_device(devname);
+	st = open_device(devname, LOG_WARNING);
 	if (!st)
 		return -1;
 	rc = slot_ping(st, name);
@@ -129,7 +129,7 @@ int allocate_slots(const char *name)
 		fprintf(stdout, "Trying to allocate slot for %s on device %s.\n", 
 				name,
 				s->devname);
-		st = open_device(s->devname);
+		st = open_device(s->devname, LOG_WARNING);
 		if (!st) {
 			return -1;
 		}
@@ -151,7 +151,7 @@ int list_slots()
 	struct sbd_context *st;
 
 	for (s = servants_leader; s; s = s->next) {
-		st = open_device(s->devname);
+		st = open_device(s->devname, LOG_WARNING);
 		if (!st) {
 			fprintf(stdout, "== disk %s unreadable!\n", s->devname);
 			continue;
@@ -251,7 +251,7 @@ int servant(const char *diskname, const void* argp)
 	atexit(servant_exit);
 	servant_inform_parent = 1;
 
-	st = open_device(diskname);
+	st = open_device(diskname, LOG_WARNING);
 	if (!st) {
 		return -1;
 	}
@@ -553,7 +553,7 @@ void open_any_device(void)
 		struct servants_list_item* s;
 
 		for (s = servants_leader; s; s = s->next) {
-			struct sbd_context *st = open_device(s->devname);
+			struct sbd_context *st = open_device(s->devname, LOG_DEBUG);
 			if (!st)
 				continue;
 			hdr_cur = header_get(st);
@@ -978,7 +978,7 @@ int dump_headers(void)
 
 	for (s = servants_leader; s; s = s->next) {
 		fprintf(stdout, "==Dumping header on disk %s\n", s->devname);
-		st = open_device(s->devname);
+		st = open_device(s->devname, LOG_WARNING);
 		if (!st) {
 			fprintf(stdout, "== disk %s unreadable!\n", s->devname);
 			continue;

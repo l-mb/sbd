@@ -229,7 +229,7 @@ close_device(struct sbd_context *st)
 }
 
 struct sbd_context *
-open_device(const char* devname)
+open_device(const char* devname, int loglevel)
 {
 	struct sbd_context *st;
 
@@ -250,7 +250,11 @@ open_device(const char* devname)
 	st->devfd = open(devname, O_SYNC|O_RDWR|O_DIRECT);
 
 	if (st->devfd == -1) {
-		cl_perror("Opening device %s failed.", devname);
+		if (loglevel == LOG_DEBUG) {
+			DBGLOG(loglevel, "Opening device %s failed.", devname);
+		} else {
+			cl_log(loglevel, "Opening device %s failed.", devname);
+		}
 		free(st);
 		return NULL;
 	}
