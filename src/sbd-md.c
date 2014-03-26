@@ -28,6 +28,9 @@ static int	check_pcmk = 0;
 static int	start_mode = 0;
 static char*	pidfile = NULL;
 
+static void open_any_device(void);
+static int check_timeout_inconsistent(struct sector_header_s *hdr);
+
 int quorum_write(int good_servants)
 {
 	return (good_servants > servant_count/2);	
@@ -256,6 +259,12 @@ int servant(const char *diskname, const void* argp)
 	s_header = header_get(st);
 	if (!s_header) {
 		cl_log(LOG_ERR, "Not a valid header on %s", diskname);
+		return -1;
+	}
+
+	if (check_timeout_inconsistent(s_header) < 0) {
+		cl_log(LOG_ERR, "Timeouts on %s do not match first device",
+				diskname);
 		return -1;
 	}
 
@@ -531,56 +540,72 @@ void servants_kill(void)
 	}
 }
 
-int check_timeout_inconsistent(void)
+void open_any_device(void)
 {
-	struct sbd_context *st;
-	struct sector_header_s *hdr_cur = 0, *hdr_last = 0;
-	struct servants_list_item* s;
-	struct timespec t_0, t_now;
+	struct sector_header_s *hdr_cur = NULL;
+	struct timespec t_0;
 	int t_wait = 0;
-	int inconsistent = 0;
 
 	clock_gettime(CLOCK_MONOTONIC, &t_0);
 
-	while (!hdr_last && t_wait < timeout_startup) {
+	while (!hdr_cur && t_wait < timeout_startup) {
+		struct timespec t_now;
+		struct servants_list_item* s;
+
 		for (s = servants_leader; s; s = s->next) {
-			st = open_device(s->devname);
+			struct sbd_context *st = open_device(s->devname);
 			if (!st)
 				continue;
 			hdr_cur = header_get(st);
 			close_device(st);
-			if (!hdr_cur)
-				continue;
-			if (hdr_last) {
-				if (hdr_last->timeout_watchdog != hdr_cur->timeout_watchdog
-				    || hdr_last->timeout_allocate != hdr_cur->timeout_allocate
-				    || hdr_last->timeout_loop != hdr_cur->timeout_loop
-				    || hdr_last->timeout_msgwait != hdr_cur->timeout_msgwait)
-					inconsistent = 1;
-				free(hdr_last);
-			}
-			hdr_last = hdr_cur;
+			if (hdr_cur)
+				break;
 		}
 		clock_gettime(CLOCK_MONOTONIC, &t_now);
 		t_wait = t_now.tv_sec - t_0.tv_sec;
-		if (!hdr_last) {
+		if (!hdr_cur) {
 			sleep(timeout_loop);
 		}
 	}
 
-	if (hdr_last) {
-		timeout_watchdog = hdr_last->timeout_watchdog;
-		timeout_allocate = hdr_last->timeout_allocate;
-		timeout_loop = hdr_last->timeout_loop;
-		timeout_msgwait = hdr_last->timeout_msgwait;
+	if (hdr_cur) {
+		timeout_watchdog = hdr_cur->timeout_watchdog;
+		timeout_allocate = hdr_cur->timeout_allocate;
+		timeout_loop = hdr_cur->timeout_loop;
+		timeout_msgwait = hdr_cur->timeout_msgwait;
 	} else { 
 		cl_log(LOG_ERR, "No devices were available at start-up within %i seconds.",
 				timeout_startup);
 		exit(1);
 	}
 
-	free(hdr_last);
-	return inconsistent;
+	free(hdr_cur);
+	return;
+}
+
+int check_timeout_inconsistent(struct sector_header_s *hdr)
+{
+	if (timeout_watchdog != hdr->timeout_watchdog) {
+		cl_log(LOG_WARNING, "watchdog timeout: %d versus %d on this device",
+				(int)timeout_watchdog, (int)hdr->timeout_watchdog);
+		return -1;
+	}
+	if (timeout_allocate != hdr->timeout_allocate) {
+		cl_log(LOG_WARNING, "allocate timeout: %d versus %d on this device",
+				(int)timeout_allocate, (int)hdr->timeout_allocate);
+		return -1;
+	}
+	if (timeout_loop != hdr->timeout_loop) {
+		cl_log(LOG_WARNING, "loop timeout: %d versus %d on this device",
+				(int)timeout_loop, (int)hdr->timeout_loop);
+		return -1;
+	}
+	if (timeout_msgwait != hdr->timeout_msgwait) {
+		cl_log(LOG_WARNING, "msgwait timeout: %d versus %d on this device",
+				(int)timeout_msgwait, (int)hdr->timeout_msgwait);
+		return -1;
+	}
+	return 0;
 }
 
 inline void cleanup_servant_by_pid(pid_t pid)
@@ -859,11 +884,7 @@ int inquisitor(void)
 	sigaddset(&procmask, SIG_LIVENESS);
 	sigprocmask(SIG_BLOCK, &procmask, NULL);
 
-	if (check_timeout_inconsistent() == 1) {
-		fprintf(stderr, "Timeout settings are different across SBD devices!\n");
-		fprintf(stderr, "You have to correct them and re-start SBD again.\n");
-		return -1;
-	}
+	open_any_device();
 
 	inquisitor_pid = make_daemon();
 	if (inquisitor_pid == 0) {
