@@ -1000,6 +1000,7 @@ int main(int argc, char **argv, char **envp)
 {
 	int exit_status = 0;
 	int c;
+	int w = 0;
 
 	if ((cmdname = strrchr(argv[0], '/')) == NULL) {
 		cmdname = argv[0];
@@ -1042,8 +1043,7 @@ int main(int argc, char **argv, char **envp)
 			cl_log(LOG_INFO, "Setting watchdog timeout disabled; using defaults.");
 			break;
 		case 'W':
-			watchdog_use = 1;
-			cl_log(LOG_INFO, "Watchdog enabled.");
+			w++;
 			break;
 		case 'w':
 			watchdogdev = strdup(optarg);
@@ -1108,7 +1108,17 @@ int main(int argc, char **argv, char **envp)
 			break;
 		}
 	}
-	
+
+	if (w > 0) {
+		watchdog_use = w % 2;
+	}
+
+	if (watchdog_use) {
+		cl_log(LOG_INFO, "Watchdog enabled.");
+	} else {
+		cl_log(LOG_INFO, "Watchdog disabled.");
+	}
+
 	if (servant_count < 1 || servant_count > 3) {
 		fprintf(stderr, "You must specify 1 to 3 devices via the -d option.\n");
 		exit_status = -1;

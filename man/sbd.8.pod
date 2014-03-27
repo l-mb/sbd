@@ -225,7 +225,11 @@ that handles the Pacemaker integration.
 
 =item B<-W>
 
-Enable use of the system watchdog. This is I<highly> recommended.
+Enable or disable use of the system watchdog to protect against the sbd
+processes failing and the node being left in an undefined state. Specify
+this once to enable, twice to disable.
+
+Defaults to I<enabled>.
 
 =item B<-w> F</dev/watchdog>
 

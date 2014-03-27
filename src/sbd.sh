@@ -47,11 +47,11 @@ if ocf_is_true "$SBD_PACEMAKER" ; then
 	SBD_OPTS+=" -P"
 fi
 : ${SBD_WATCHDOG:="true"}
-if ocf_is_true "$SBD_WATCHDOG" ; then
-	SBD_OPTS+=" -W"
+if ! ocf_is_true "$SBD_WATCHDOG" ; then
+	SBD_OPTS+=" -W -W"
 fi
 if [ -n "$SBD_WATCHDOG_DEV" ]; then
-	SBD_OPTS+="-w $SBD_WATCHDOG_DEV"
+	SBD_OPTS+=" -w $SBD_WATCHDOG_DEV"
 fi
 : ${SBD_STARTMODE:="always"}
 case "$SBD_STARTMODE" in

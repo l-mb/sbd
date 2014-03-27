@@ -31,7 +31,7 @@ int		timeout_msgwait		= 10;
 int		timeout_io		= 3;
 int		timeout_startup		= 120;
 
-int	watchdog_use		= 0;
+int	watchdog_use		= 1;
 int	watchdog_set_timeout	= 1;
 unsigned long	timeout_watchdog_crashdump = 240;
 int	skip_rt			= 0;
