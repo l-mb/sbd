@@ -170,6 +170,9 @@ cib_connect(gboolean full)
 	CRM_CHECK(cib != NULL, return -EINVAL);
 
 	cib_connected = 0;
+
+	crm_xml_init();
+
 	if (cib->state != cib_connected_query && cib->state != cib_connected_command) {
 
 		rc = cib->cmds->signon(cib, crm_system_name, cib_query);
