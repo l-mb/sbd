@@ -545,7 +545,7 @@ Pacemaker can only interact with SBD to issue a node fence if there is a
 configure fencing resource. This should be a primitive, not a clone, as
 follows:
 
-	primitive fencing-sbd external/sbd \
+	primitive fencing-sbd stonith:external/sbd \
 		op start start-delay="15"
 
 This will automatically use the same devices as configured in
@@ -577,6 +577,11 @@ timeout is 60 seconds, this is a possible configuration:
 B<Caution>: if I<stonith-timeout> is too low for I<msgwait> and the
 system overhead, sbd will never be able to successfully complete a fence
 request. This will create a fencing loop.
+
+Note that the sbd fencing agent will try to detect this and
+automatically extend the I<stonith-timeout> setting to a reasonable
+value, on the assumption that sbd modifying your configuration is
+preferable to not fencing.
 
 =head1 Management tasks
 
