@@ -58,6 +58,7 @@ case "$SBD_STARTMODE" in
 always) SBD_OPTS+=" -S 0" ;;
 clean) SBD_OPTS+=" -S 1" ;;
 esac
+: ${SBD_DELAY_START:="no"}
 
 start() {
 	if ! pidofproc -p $SBD_PIDFILE $SBD_BIN >/dev/null 2>&1 ; then
@@ -66,6 +67,9 @@ start() {
 			exit 1
 		fi
 	else
+		if ocf_is_true ${SBD_DELAY_START} ; then
+			sleep $(sbd -d "$SBD_DEVICE" dump | grep -m 1 msgwait | awk '{print $4}') 2>/dev/null
+		fi
 		return 0
 	fi
 }

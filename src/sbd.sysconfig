@@ -24,6 +24,19 @@ SBD_PACEMAKER=
 SBD_STARTMODE=
 
 ## Type: yesno
+## Default: no
+#
+# Whether to delay after starting sbd on boot for "msgwait" seconds.
+# This may be necessary if your cluster nodes reboot so fast that the
+# other nodes are still waiting in the fence acknowledgement phase.
+# This is an occasional issue with virtual machines.
+#
+# This option may be ignored at a later point, once pacemaker handles
+# this case better.
+#
+SBD_DELAY_START=
+
+## Type: yesno
 ## Default: yes
 #
 # Whether to use a watchdog.
