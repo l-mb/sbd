@@ -503,8 +503,8 @@ For C<systemd>, sbd simply has to be enabled using
 
 	systemctl enable sbd.service
 
-The daemon is brought online on each node before the Pacemaker is
-started, and terminated only after all other cluster components have
+The daemon is brought online on each node before corosync and Pacemaker
+are started, and terminated only after all other cluster components have
 been shut down - ensuring that cluster resources are never activated
 without SBD supervision.
 
