@@ -4,7 +4,7 @@ AM_CPPFLAGS =  -I$(includedir)/pacemaker  \
 
 sbin_PROGRAMS = sbd
 
-sbd_SOURCES = sbd-common.c sbd-md.c sbd-pacemaker.c setproctitle.c
+sbd_SOURCES = sbd-common.c sbd-inquisitor.c sbd-md.c sbd-pacemaker.c setproctitle.c
 
 sbd_LDFLAGS = $(glib_LIBS) $(libcoroipcc_LIBS)
 
