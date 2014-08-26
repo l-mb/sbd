@@ -29,13 +29,14 @@ AM_INIT_AUTOMAKE
 AM_PROG_CC_C_O
 
 PKG_CHECK_MODULES(glib, [glib-2.0])
-PKG_CHECK_MODULES(libcoroipcc, [libcoroipcc])
+dnl PKG_CHECK_MODULES(libcoroipcc, [libcoroipcc])
 
 dnl pacemaker > 1.1.8
 PKG_CHECK_MODULES(pacemaker, [pacemaker, pacemaker-cib], HAVE_pacemaker=1, HAVE_pacemaker=0)
 
 dnl pacemaker <= 1.1.8
 PKG_CHECK_MODULES(pcmk, [pcmk, pcmk-cib], HAVE_pcmk=1, HAVE_pcmk=0)
+PKG_CHECK_MODULES(libqb, [libqb])
 
 if test $HAVE_pacemaker = 0 -a $HAVE_pcmk = 0; then
     AC_MSG_ERROR(No package 'pacemaker' found)
@@ -48,16 +49,17 @@ else
 fi
 
 PKG_CHECK_MODULES(libxml, [libxml-2.0])
-CPPFLAGS="$CPPFLAGS $libxml_CFLAGS"
+CPPFLAGS="$CPPFLAGS $libxml_CFLAGS $libqb_CFLAGS"
 
 dnl     checks for libraries
 AC_CHECK_LIB(aio, io_setup, , missing="yes")
-AC_CHECK_LIB(plumbgpl, init_set_proc_title, , missing="yes")
+AC_CHECK_LIB(qb, qb_ipcs_connection_auth_set, , missing="yes")
 AC_CHECK_LIB(cib, cib_new, , missing="yes")
 AC_CHECK_LIB(crmcommon, set_crm_log_level, , missing="yes")
 AC_CHECK_LIB(pe_status, pe_find_node, , missing="yes")
 AC_CHECK_LIB(pe_rules, test_rule, , missing="yes")
 AC_CHECK_LIB(crmcluster, crm_peer_init, , missing="yes")
+AC_CHECK_LIB(uuid, uuid_unparse, , missing="yes")
 
 dnl pacemaker >= 1.1.8
 AC_CHECK_HEADERS(pacemaker/crm/cluster.h)

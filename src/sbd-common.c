@@ -17,6 +17,13 @@
  */
 
 #include "sbd.h"
+#include <sys/reboot.h>
+#include <sys/types.h>
+#include <pwd.h>
+
+#ifdef _POSIX_MEMLOCK
+#  include <sys/mman.h>
+#endif
 
 /* These have to match the values in the header of the partition */
 static char		sbd_magic[8] = "SBD_SBD_";
@@ -159,19 +166,36 @@ watchdog_init(void)
 }
 
 void
-watchdog_close(void)
+watchdog_close(bool disarm)
 {
-	if (watchdogfd >= 0) {
-		if (write(watchdogfd, "V", 1) != 1) {
-			cl_perror(
-			"Watchdog write magic character failure: closing %s!",
-				watchdogdev);
-		}
-		if (close(watchdogfd) < 0) {
-			cl_perror("Watchdog close(2) failed.");
-		}
-		watchdogfd = -1;
-	}
+    if (watchdogfd < 0) {
+        return;
+    }
+
+    if (disarm) {
+        int r;
+        int flags = WDIOS_DISABLECARD;;
+
+        /* Explicitly disarm it */
+        r = ioctl(watchdogfd, WDIOC_SETOPTIONS, &flags);
+        if (r < 0) {
+            cl_perror("Failed to disable hardware watchdog %s", watchdogdev);
+        }
+
+        /* To be sure, use magic close logic, too */
+        for (;;) {
+            if (write(watchdogfd, "V", 1) > 0) {
+                break;
+            }
+            cl_perror("Cannot disable watchdog device %s", watchdogdev);
+        }
+    }
+
+    if (close(watchdogfd) < 0) {
+        cl_perror("Watchdog close(%d) failed", watchdogfd);
+    }
+
+    watchdogfd = -1;
 }
 
 /* This duplicates some code from linux/ioprio.h since these are not included
@@ -205,6 +229,145 @@ enum {
 #define IOPRIO_PRIO_DATA(mask)  ((mask) & IOPRIO_PRIO_MASK)
 #define IOPRIO_PRIO_VALUE(class, data)  (((class) << IOPRIO_CLASS_SHIFT) | data)
 
+static unsigned char
+sbd_stack_hogger(unsigned char * inbuf, int kbytes)
+{
+    unsigned char buf[1024];
+
+    if(kbytes <= 0) {
+        return HOG_CHAR;
+    }
+
+    if (inbuf == NULL) {
+        memset(buf, HOG_CHAR, sizeof(buf));
+    } else {
+        memcpy(buf, inbuf, sizeof(buf));
+    }
+
+    if (kbytes > 0) {
+        return sbd_stack_hogger(buf, kbytes-1);
+    } else {
+        return buf[sizeof(buf)-1];
+    }
+}
+
+static void
+sbd_malloc_hogger(int kbytes)
+{
+    int	j;
+    void**chunks;
+    int	 chunksize = 1024;
+
+    if(kbytes <= 0) {
+        return;
+    }
+
+    /*
+     * We could call mallopt(M_MMAP_MAX, 0) to disable it completely,
+     * but we've already called mlockall()
+     *
+     * We could also call mallopt(M_TRIM_THRESHOLD, -1) to prevent malloc
+     * from giving memory back to the system, but we've already called
+     * mlockall(MCL_FUTURE), so there's no need.
+     */
+
+    chunks = malloc(kbytes * sizeof(void *));
+    if (chunks == NULL) {
+        cl_log(LOG_WARNING, "Could not preallocate chunk array");
+        return;
+    }
+
+    for (j=0; j < kbytes; ++j) {
+        chunks[j] = malloc(chunksize);
+        if (chunks[j] == NULL) {
+            cl_log(LOG_WARNING, "Could not preallocate block %d", j);
+
+        } else {
+            memset(chunks[j], 0, chunksize);
+        }
+    }
+
+    for (j=0; j < kbytes; ++j) {
+        free(chunks[j]);
+    }
+
+    free(chunks);
+}
+
+static void sbd_memlock(int stackgrowK, int heapgrowK) 
+{
+
+#ifdef _POSIX_MEMLOCK
+    /*
+     * We could call setrlimit(RLIMIT_MEMLOCK,...) with a large
+     * number, but the mcp runs as root and mlock(2) says:
+     *
+     * Since Linux 2.6.9, no limits are placed on the amount of memory
+     * that a privileged process may lock, and this limit instead
+     * governs the amount of memory that an unprivileged process may
+     * lock.
+     */
+    if (mlockall(MCL_CURRENT|MCL_FUTURE) >= 0) {
+        cl_log(LOG_INFO, "Locked ourselves in memory");
+
+        /* Now allocate some extra pages (MCL_FUTURE will ensure they stay around) */
+        sbd_malloc_hogger(heapgrowK);
+        sbd_stack_hogger(NULL, stackgrowK);
+
+    } else {
+        cl_perror("Unable to lock ourselves into memory");
+    }
+
+#else
+    cl_log(LOG_ERR, "Unable to lock ourselves into memory");
+#endif
+}
+
+void
+sbd_make_realtime(int priority, int stackgrowK, int heapgrowK)
+{
+    if(priority < 0) {
+        return;
+    }
+
+#ifdef SCHED_RR
+    {
+        int pcurrent = 0;
+        int pmin = sched_get_priority_min(SCHED_RR);
+        int pmax = sched_get_priority_max(SCHED_RR);
+
+        if (priority == 0) {
+            priority = pmax;
+        } else if (priority < pmin) {
+            priority = pmin;
+        } else if (priority > pmax) {
+            priority = pmax;
+        }
+
+        pcurrent = sched_getscheduler(0);
+        if (pcurrent < 0) {
+            cl_perror("Unable to get scheduler priority");
+
+        } else if(pcurrent < priority) {
+            struct sched_param sp;
+
+            memset(&sp, 0, sizeof(sp));
+            sp.sched_priority = priority;
+
+            if (sched_setscheduler(0, SCHED_RR, &sp) < 0) {
+                cl_perror("Unable to set scheduler priority to %d", priority);
+            } else {
+                cl_log(LOG_INFO, "Scheduler priority is now %d", priority);
+            }
+        }
+    }
+#else
+    cl_log(LOG_ERR, "System does not support updating the scheduler priority");
+#endif
+
+    sbd_memlock(heapgrowK, stackgrowK);
+}
+
 void
 maximize_priority(void)
 {
@@ -213,13 +376,14 @@ maximize_priority(void)
 		return;
 	}
 
-	cl_make_realtime(-1, 100, 256, 256);
+        sbd_make_realtime(0, 256, 256);
 
 	if (ioprio_set(IOPRIO_WHO_PROCESS, getpid(),
 			IOPRIO_PRIO_VALUE(IOPRIO_CLASS_RT, 1)) != 0) {
 		cl_perror("ioprio_set() call failed.");
 	}
 }
+
 
 void
 close_device(struct sbd_context *st)
@@ -901,74 +1065,121 @@ sysrq_trigger(char t)
 	return;
 }
 
+
+static void
+do_exit(char kind) 
+{
+    /* TODO: Turn debug_mode into a bit field? Delay + kdump for example */
+    const char *reason = NULL;
+
+    if (kind == 'c') {
+        cl_log(LOG_NOTICE, "Initiating kdump");
+
+    } else if (debug_mode == 1) {
+        cl_log(LOG_WARNING, "Initiating kdump instead of panicing the node (debug mode)");
+        kind = 'c';
+    }
+
+    if (debug_mode == 2) {
+        cl_log(LOG_WARNING, "Shutting down SBD instead of panicing the node (debug mode)");
+        watchdog_close(true);
+        exit(0);
+    }
+
+    if (debug_mode == 3) {
+        /* Give the system some time to flush logs to disk before rebooting. */
+        cl_log(LOG_WARNING, "Delaying node panic by 10s (debug mode)");
+
+        watchdog_close(true);
+        sync();
+
+        sleep(10);
+    }
+
+    switch(kind) {
+        case 'b':
+            reason = "reboot";
+            break;
+        case 'c':
+            reason = "crashdump";
+            break;
+        case 'o':
+            reason = "off";
+            break;
+        default:
+            reason = "unknown";
+            break;
+    }
+
+    cl_log(LOG_EMERG, "Rebooting system: %s", reason);
+    sync();
+
+    if(kind == 'c') {
+        watchdog_close(true);
+        sysrq_trigger(kind);
+
+    } else {
+        watchdog_close(false);
+        sysrq_trigger(kind);
+        if(reboot(RB_AUTOBOOT) < 0) {
+            cl_perror("Reboot failed");
+        }
+    }
+
+    exit(1);
+}
+
 void
 do_crashdump(void)
 {
-	if (timeout_watchdog_crashdump) {
-		timeout_watchdog = timeout_watchdog_crashdump;
-		watchdog_init_interval();
-		watchdog_tickle();
-	}
-	sysrq_trigger('c');
-	/* is it possible to reach the following line? */
-	cl_reboot(5, "sbd is triggering crashdumping");
-	exit(1);
+    do_exit('c');
 }
 
 void
 do_reset(void)
 {
-	if (debug_mode == 1) {
-		cl_log(LOG_ERR, "Request to suicide changed to kdump due to DEBUG MODE!");
-		watchdog_close();
-		sysrq_trigger('c');
-		exit(0);
-	} else if (debug_mode == 2) {
-		cl_log(LOG_ERR, "Skipping request to suicide due to DEBUG MODE!");
-		watchdog_close();
-		exit(0);
-	} else if (debug_mode == 3) {
-		/* The idea is to give the system some time to flush
-		 * logs to disk before rebooting. */
-		cl_log(LOG_ERR, "Delaying request to suicide by 10s due to DEBUG MODE!");
-		watchdog_close();
-		sync();
-		sync();
-		sleep(10);
-		cl_log(LOG_ERR, "Debug mode is now becoming real ...");
-	}
-	sysrq_trigger('b');
-	cl_reboot(5, "sbd is self-fencing (reset)");
-	sleep(timeout_watchdog * 2);
-	exit(1);
+    do_exit('b');
 }
 
 void
 do_off(void)
 {
-	if (debug_mode == 1) {
-		cl_log(LOG_ERR, "Request to power-off changed to kdump due to DEBUG MODE!");
-		watchdog_close();
-		sysrq_trigger('c');
-		exit(0);
-	} else 	if (debug_mode == 2) {
-		cl_log(LOG_ERR, "Skipping request to power-off due to DEBUG MODE!");
-		watchdog_close();
-		exit(0);
-	} else if (debug_mode == 3) {
-		/* The idea is to give the system some time to flush
-		 * logs to disk before rebooting. */
-		cl_log(LOG_ERR, "Delaying request to power-off by 10s due to DEBUG MODE!");
-		watchdog_close();
-		sync();
-		sync();
-		sleep(10);
-		cl_log(LOG_ERR, "Debug mode is now becoming real ...");
+    do_exit('o');
+}
+
+/*
+ * Change directory to the directory our core file needs to go in
+ * Call after you establish the userid you're running under.
+ */
+int
+sbd_cdtocoredir(void)
+{
+	int		rc;
+	struct passwd*	pwent;
+	static const char *dir = NULL;
+
+	if (dir == NULL) {
+		dir = HA_COREDIR;
 	}
-	sysrq_trigger('o');
-	cl_reboot(5, "sbd is self-fencing (power-off)");
-	sleep(timeout_watchdog * 2);
-	exit(1);
+	if ((rc=chdir(dir)) < 0) {
+		int errsave = errno;
+		cl_perror("Cannot chdir to [%s]", dir);
+		errno = errsave;
+		return rc;
+	}
+	pwent = getpwuid(getuid());
+	if (pwent == NULL) {
+		int errsave = errno;
+		cl_perror("Cannot get name for uid [%d]", getuid());
+		errno = errsave;
+		return -1;
+	}
+	if ((rc=chdir(pwent->pw_name)) < 0) {
+		int errsave = errno;
+		cl_perror("Cannot chdir to [%s/%s]", dir, pwent->pw_name);
+		errno = errsave;
+	}
+	return rc;
 }
 
 pid_t
@@ -987,7 +1198,7 @@ make_daemon(void)
 		return pid;
 	}
 
-	cl_log_enable_stderr(FALSE);
+        qb_log_ctl(QB_LOG_STDERR, QB_LOG_CONF_ENABLED, QB_FALSE);
 
 	/* This is the child; ensure privileges have not been lost. */
 	maximize_priority();
@@ -1000,7 +1211,7 @@ make_daemon(void)
 	(void)open(devnull, O_WRONLY);
 	close(2);
 	(void)open(devnull, O_WRONLY);
-	cl_cdtocoredir();
+	sbd_cdtocoredir();
 	return 0;
 }
 

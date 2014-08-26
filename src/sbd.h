@@ -18,12 +18,6 @@
 
 #include <arpa/inet.h>
 #include <asm/unistd.h>
-#include <clplumbing/cl_log.h>
-#include <clplumbing/cl_pidfile.h>
-#include <clplumbing/cl_reboot.h>
-#include <clplumbing/coredumps.h>
-#include <clplumbing/realtime.h>
-#include <clplumbing/setproctitle.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -35,6 +29,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/ptrace.h>
@@ -46,6 +41,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <uuid/uuid.h>
+#include <qb/qblog.h>
 
 /* signals reserved for multi-disk sbd */
 #define SIG_LIVENESS (SIGRTMIN + 1)	/* report liveness of the disk */
@@ -55,6 +51,9 @@
 #define SIG_IO_FAIL  (SIGRTMIN + 5)	/* the IO child requests to be considered failed */
 #define SIG_PCMK_UNHEALTHY  (SIGRTMIN + 6)
 /* FIXME: should add dynamic check of SIG_XX >= SIGRTMAX */
+
+#define HOG_CHAR	0xff
+#define HA_COREDIR      "/var/lib/heartbeat/cores"
 
 /* Sector data types */
 struct sector_header_s {
@@ -116,7 +115,7 @@ int watchdog_init_interval(void);
 int watchdog_tickle(void);
 int watchdog_init(void);
 void sysrq_init(void);
-void watchdog_close(void);
+void watchdog_close(bool disarm);
 struct sbd_context *open_device(const char* devname, int loglevel);
 void close_device(struct sbd_context *st);
 signed char cmd2char(const char *cmd);
@@ -209,6 +208,17 @@ int quorum_read(int good_servants);
 int pcmk_have_quorum(void);
 int servant_pcmk(const char *diskname, const void* argp);
 
-#define DBGLOG(lvl, fmt, args...) do { \
+int init_set_proc_title(int argc, char *argv[], char *envp[]);
+void set_proc_title(const char *fmt,...);
+
+
+#define cl_log(level, fmt, args...) qb_log_from_external_source( __func__, __FILE__, fmt, level, __LINE__, 0, ##args)
+
+#  define cl_perror(fmt, args...) do {                                  \
+	const char *err = strerror(errno);				\
+	cl_log(LOG_ERR, fmt ": %s (%d)", ##args, err, errno);		\
+    } while(0)
+
+#define DBGLOG(lvl, fmt, args...) do {           \
 	if (debug > 0) cl_log(lvl, fmt, ##args); \
 	} while(0)
