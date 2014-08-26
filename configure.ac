@@ -40,14 +40,15 @@ PKG_CHECK_MODULES(pcmk, [pcmk, pcmk-cib], HAVE_pcmk=1, HAVE_pcmk=0)
 if test $HAVE_pacemaker = 0 -a $HAVE_pcmk = 0; then
     AC_MSG_ERROR(No package 'pacemaker' found)
 elif test $HAVE_pacemaker = 1; then
-    CFLAGS="$CFLAGS $glib_CFLAGS $pacemaker_CFLAGS"
+    CPPFLAGS="$CPPFLAGS $glib_CFLAGS $pacemaker_CFLAGS"
 else
     dnl Deal with the wrong 'includedir' in pcmk.pc from pacemaker < 1.1.8
     pcmk_CFLAGS="-I${prefix}/include/pacemaker -I${prefix}/include/heartbeat"
-    CFLAGS="$CFLAGS $glib_CFLAGS $pcmk_CFLAGS"
+    CPPFLAGS="$CPPFLAGS $glib_CFLAGS $pcmk_CFLAGS"
 fi
 
 PKG_CHECK_MODULES(libxml, [libxml-2.0])
+CPPFLAGS="$CPPFLAGS $libxml_CFLAGS"
 
 dnl     checks for libraries
 AC_CHECK_LIB(aio, io_setup, , missing="yes")
