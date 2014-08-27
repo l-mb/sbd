@@ -19,10 +19,9 @@
 #include "sbd.h"
 #define	LOCKSTRLEN	11
 
-struct servants_list_item *servants_leader = NULL;
+static struct servants_list_item *servants_leader = NULL;
 
-extern int	check_pcmk;
-
+int	check_pcmk = 0;
 int	servant_count	= 0;
 int	servant_restart_interval = 5;
 int	servant_restart_count = 1;
@@ -115,7 +114,6 @@ int check_all_dead(void)
 	return 1;
 }
 
-
 void servant_start(struct servants_list_item *s)
 {
 	int r = 0;
@@ -131,8 +129,7 @@ void servant_start(struct servants_list_item *s)
 		DBGLOG(LOG_INFO, "Starting Pacemaker servant");
 		s->pid = assign_servant(s->devname, servant_pcmk, start_mode, NULL);
 	} else {
-		DBGLOG(LOG_INFO, "Starting servant for device %s",
-				s->devname);
+		DBGLOG(LOG_INFO, "Starting servant for device %s", s->devname);
 		s->pid = assign_servant(s->devname, servant, start_mode, s);
 	}
 

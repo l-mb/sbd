@@ -100,50 +100,12 @@ struct sbd_context {
 	struct iocb	io;
 };
 
-#define SBD_MSG_EMPTY	0x00
-#define SBD_MSG_TEST	0x01
-#define SBD_MSG_RESET	0x02
-#define SBD_MSG_OFF	0x03
-#define SBD_MSG_EXIT	0x04
-#define SBD_MSG_CRASHDUMP	0x05
-			
-#define SLOT_TO_SECTOR(slot) (1+slot*2)
-#define MBOX_TO_SECTOR(mbox) (2+mbox*2)
-
 void usage(void);
 int watchdog_init_interval(void);
 int watchdog_tickle(void);
 int watchdog_init(void);
 void sysrq_init(void);
 void watchdog_close(bool disarm);
-struct sbd_context *open_device(const char* devname, int loglevel);
-void open_any_device(struct servants_list_item *servants);
-void close_device(struct sbd_context *st);
-signed char cmd2char(const char *cmd);
-void * sector_alloc(void);
-const char* char2cmd(const char cmd);
-int sector_write(struct sbd_context *st, int sector, void *data);
-int sector_read(struct sbd_context *st, int sector, void *data);
-int slot_read(struct sbd_context *st, int slot, struct sector_node_s *s_node);
-int slot_write(struct sbd_context *st, int slot, struct sector_node_s *s_node);
-int mbox_write(struct sbd_context *st, int mbox, struct sector_mbox_s *s_mbox);
-int mbox_read(struct sbd_context *st, int mbox, struct sector_mbox_s *s_mbox);
-int mbox_write_verify(struct sbd_context *st, int mbox, struct sector_mbox_s *s_mbox);
-/* After a call to header_write(), certain data fields will have been
- * converted to on-disk byte-order; the header should not be accessed
- * afterwards anymore! */
-int header_write(struct sbd_context *st, struct sector_header_s *s_header);
-int header_read(struct sbd_context *st, struct sector_header_s *s_header);
-int valid_header(const struct sector_header_s *s_header);
-struct sector_header_s * header_get(struct sbd_context *st);
-int init_device(struct sbd_context *st);
-int slot_lookup(struct sbd_context *st, const struct sector_header_s *s_header, const char *name);
-int slot_unused(struct sbd_context *st, const struct sector_header_s *s_header);
-int slot_allocate(struct sbd_context *st, const char *name);
-int slot_list(struct sbd_context *st);
-int slot_ping(struct sbd_context *st, const char *name);
-int slot_msg(struct sbd_context *st, const char *name, const char *cmd);
-int header_dump(struct sbd_context *st);
 void sysrq_trigger(char t);
 void do_crashdump(void);
 void do_reset(void);
@@ -183,34 +145,21 @@ struct slot_msg_arg_t {
 	const char* msg;
 };
 
+void open_any_device(struct servants_list_item *servants);
 int allocate_slots(const char *name, struct servants_list_item *servants);
 int list_slots(struct servants_list_item *servants);
 int ping_via_slots(const char *name, struct servants_list_item *servants);
 int dump_headers(struct servants_list_item *servants);
+int messenger(const char *name, const char *msg, struct servants_list_item *servants);
 
-int check_all_dead(void);
-void servant_exit(void);
 int servant(const char *diskname, int mode, const void* argp);
-void recruit_servant(const char *devname, pid_t pid);
+int servant_pcmk(const char *diskname, int mode, const void* argp);
+
 struct servants_list_item *lookup_servant_by_dev(const char *devname);
 struct servants_list_item *lookup_servant_by_pid(pid_t pid);
-void servants_kill(void);
-void servants_start(void);
-void servant_start(struct servants_list_item *s);
-void inquisitor_child(void);
-int inquisitor(void);
-int inquisitor_decouple(void);
-int messenger(const char *name, const char *msg, struct servants_list_item *servants);
-void cleanup_servant_by_pid(pid_t pid);
-int quorum_write(int good_servants);
-int quorum_read(int good_servants);
-
-int pcmk_have_quorum(void);
-int servant_pcmk(const char *diskname, int mode, const void* argp);
 
 int init_set_proc_title(int argc, char *argv[], char *envp[]);
 void set_proc_title(const char *fmt,...);
-
 
 #define cl_log(level, fmt, args...) qb_log_from_external_source( __func__, __FILE__, fmt, level, __LINE__, 0, ##args)
 
