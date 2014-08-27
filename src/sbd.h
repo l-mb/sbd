@@ -117,7 +117,7 @@ int watchdog_init(void);
 void sysrq_init(void);
 void watchdog_close(bool disarm);
 struct sbd_context *open_device(const char* devname, int loglevel);
-void open_any_device(void);
+void open_any_device(struct servants_list_item *servants);
 void close_device(struct sbd_context *st);
 signed char cmd2char(const char *cmd);
 void * sector_alloc(void);
@@ -174,24 +174,23 @@ extern int  sector_size;
 extern int  watchdogfd;
 extern const char* cmdname;
 
-typedef int (*functionp_t)(const char* devname, const void* argp);
+typedef int (*functionp_t)(const char* devname, int mode, const void* argp);
 
-int assign_servant(const char* devname, functionp_t functionp, const void* argp);
-int init_devices(void);
+int assign_servant(const char* devname, functionp_t functionp, int mode, const void* argp);
+int init_devices(struct servants_list_item *servants);
 struct slot_msg_arg_t {
 	const char* name;
 	const char* msg;
 };
-int slot_msg_wrapper(const char* devname, const void* argp);
-int slot_ping_wrapper(const char* devname, const void* argp);
-int allocate_slots(const char *name);
-int list_slots(void);
-int ping_via_slots(const char *name);
-int dump_headers(void);
+
+int allocate_slots(const char *name, struct servants_list_item *servants);
+int list_slots(struct servants_list_item *servants);
+int ping_via_slots(const char *name, struct servants_list_item *servants);
+int dump_headers(struct servants_list_item *servants);
 
 int check_all_dead(void);
 void servant_exit(void);
-int servant(const char *diskname, const void* argp);
+int servant(const char *diskname, int mode, const void* argp);
 void recruit_servant(const char *devname, pid_t pid);
 struct servants_list_item *lookup_servant_by_dev(const char *devname);
 struct servants_list_item *lookup_servant_by_pid(pid_t pid);
@@ -201,13 +200,13 @@ void servant_start(struct servants_list_item *s);
 void inquisitor_child(void);
 int inquisitor(void);
 int inquisitor_decouple(void);
-int messenger(const char *name, const char *msg);
+int messenger(const char *name, const char *msg, struct servants_list_item *servants);
 void cleanup_servant_by_pid(pid_t pid);
 int quorum_write(int good_servants);
 int quorum_read(int good_servants);
 
 int pcmk_have_quorum(void);
-int servant_pcmk(const char *diskname, const void* argp);
+int servant_pcmk(const char *diskname, int mode, const void* argp);
 
 int init_set_proc_title(int argc, char *argv[], char *envp[]);
 void set_proc_title(const char *fmt,...);

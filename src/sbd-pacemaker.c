@@ -445,7 +445,7 @@ clean_up(int rc)
 }
 
 int
-servant_pcmk(const char *diskname, const void* argp)
+servant_pcmk(const char *diskname, int mode, const void* argp)
 {
 	int exit_code = 0;
 	crm_cluster_t crm_cluster;

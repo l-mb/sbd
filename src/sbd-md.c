@@ -18,19 +18,16 @@
 
 #include "sbd.h"
 
-extern struct servants_list_item *servants_leader;
 extern int servant_count;
-extern int	start_mode;
+static int servant_inform_parent = 0;
 
-static int	servant_inform_parent = 0;
-
-int init_devices()
+int init_devices(struct servants_list_item *servants)
 {
 	int rc = 0;
 	struct sbd_context *st;
 	struct servants_list_item *s;
 
-	for (s = servants_leader; s; s = s->next) {
+	for (s = servants; s; s = s->next) {
 		fprintf(stdout, "Initializing device %s\n",
 				s->devname);
 		st = open_device(s->devname, LOG_ERR);
@@ -48,7 +45,7 @@ int init_devices()
 	return 0;
 }
 
-int slot_msg_wrapper(const char* devname, const void* argp)
+static int slot_msg_wrapper(const char* devname, int mode, const void* argp)
 {
 	int rc = 0;
 	struct sbd_context *st;
@@ -64,7 +61,7 @@ int slot_msg_wrapper(const char* devname, const void* argp)
 	return rc;
 }
 
-int slot_ping_wrapper(const char* devname, const void* argp)
+static int slot_ping_wrapper(const char* devname, int mode, const void* argp)
 {
 	int rc = 0;
 	const char* name = (const char*)argp;
@@ -78,13 +75,13 @@ int slot_ping_wrapper(const char* devname, const void* argp)
 	return rc;
 }
 
-int allocate_slots(const char *name)
+int allocate_slots(const char *name, struct servants_list_item *servants)
 {
 	int rc = 0;
 	struct sbd_context *st;
 	struct servants_list_item *s;
 
-	for (s = servants_leader; s; s = s->next) {
+	for (s = servants; s; s = s->next) {
 		fprintf(stdout, "Trying to allocate slot for %s on device %s.\n", 
 				name,
 				s->devname);
@@ -103,13 +100,13 @@ int allocate_slots(const char *name)
 	return 0;
 }
 
-int list_slots()
+int list_slots(struct servants_list_item *servants)
 {
 	int rc = 0;
 	struct servants_list_item *s;
 	struct sbd_context *st;
 
-	for (s = servants_leader; s; s = s->next) {
+	for (s = servants; s; s = s->next) {
 		st = open_device(s->devname, LOG_WARNING);
 		if (!st) {
 			fprintf(stdout, "== disk %s unreadable!\n", s->devname);
@@ -124,7 +121,7 @@ int list_slots()
 	return 0;
 }
 
-int ping_via_slots(const char *name)
+int ping_via_slots(const char *name, struct servants_list_item *servants)
 {
 	int sig = 0;
 	pid_t pid = 0;
@@ -138,8 +135,8 @@ int ping_via_slots(const char *name)
 	sigaddset(&procmask, SIGCHLD);
 	sigprocmask(SIG_BLOCK, &procmask, NULL);
 
-	for (s = servants_leader; s; s = s->next) {
-		s->pid = assign_servant(s->devname, &slot_ping_wrapper, (const void*)name);
+	for (s = servants; s; s = s->next) {
+            s->pid = assign_servant(s->devname, &slot_ping_wrapper, 0, (const void*)name);
 	}
 
 	while (servants_finished < servant_count) {
@@ -173,7 +170,7 @@ int quorum_read(int good_servants)
 		return (good_servants >= 1);
 }
 
-int messenger(const char *name, const char *msg)
+int messenger(const char *name, const char *msg, struct servants_list_item *servants)
 {
 	int sig = 0;
 	pid_t pid = 0;
@@ -189,8 +186,8 @@ int messenger(const char *name, const char *msg)
 	sigaddset(&procmask, SIGCHLD);
 	sigprocmask(SIG_BLOCK, &procmask, NULL);
 
-	for (s = servants_leader; s; s = s->next) {
-		s->pid = assign_servant(s->devname, &slot_msg_wrapper, &slot_msg_arg);
+	for (s = servants; s; s = s->next) {
+            s->pid = assign_servant(s->devname, &slot_msg_wrapper, 0, &slot_msg_arg);
 	}
 	
 	while (!(quorum_write(successful_delivery) || 
@@ -224,13 +221,13 @@ int messenger(const char *name, const char *msg)
 	}
 }
 
-int dump_headers(void)
+int dump_headers(struct servants_list_item *servants)
 {
 	int rc = 0;
-	struct servants_list_item *s = servants_leader;
+	struct servants_list_item *s = servants;
 	struct sbd_context *st;
 
-	for (s = servants_leader; s; s = s->next) {
+	for (s = servants; s; s = s->next) {
 		fprintf(stdout, "==Dumping header on disk %s\n", s->devname);
 		st = open_device(s->devname, LOG_WARNING);
 		if (!st) {
@@ -250,7 +247,7 @@ int dump_headers(void)
 	return rc;
 }
 
-void open_any_device(void)
+void open_any_device(struct servants_list_item *servants)
 {
 	struct sector_header_s *hdr_cur = NULL;
 	struct timespec t_0;
@@ -262,7 +259,7 @@ void open_any_device(void)
 		struct timespec t_now;
 		struct servants_list_item* s;
 
-		for (s = servants_leader; s; s = s->next) {
+		for (s = servants; s; s = s->next) {
 			struct sbd_context *st = open_device(s->devname, LOG_DEBUG);
 			if (!st)
 				continue;
@@ -338,7 +335,7 @@ void servant_exit(void)
 	}
 }
 
-int servant(const char *diskname, const void* argp)
+int servant(const char *diskname, int mode, const void* argp)
 {
 	struct sector_mbox_s *s_mbox = NULL;
 	struct sector_node_s *s_node = NULL;
@@ -421,7 +418,7 @@ int servant(const char *diskname, const void* argp)
 
 	s_mbox = sector_alloc();
 	if (s->first_start) {
-		if (start_mode > 0) {
+		if (mode > 0) {
 			if (mbox_read(st, mbox, s_mbox) < 0) {
 				cl_log(LOG_ERR, "mbox read failed during start-up in servant.");
 				rc = -1;

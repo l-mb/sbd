@@ -55,7 +55,7 @@ void recruit_servant(const char *devname, pid_t pid)
 	servant_count++;
 }
 
-int assign_servant(const char* devname, functionp_t functionp, const void* argp)
+int assign_servant(const char* devname, functionp_t functionp, int mode, const void* argp)
 {
 	pid_t pid = 0;
 	int rc = 0;
@@ -63,7 +63,7 @@ int assign_servant(const char* devname, functionp_t functionp, const void* argp)
 	pid = fork();
 	if (pid == 0) {		/* child */
 		maximize_priority();
-		rc = (*functionp)(devname, argp);
+		rc = (*functionp)(devname, mode, argp);
 		if (rc == -1)
 			exit(1);
 		else
@@ -129,11 +129,11 @@ void servant_start(struct servants_list_item *s)
 	s->restarts++;
 	if (strcmp("pcmk",s->devname) == 0) {
 		DBGLOG(LOG_INFO, "Starting Pacemaker servant");
-		s->pid = assign_servant(s->devname, servant_pcmk, NULL);
+		s->pid = assign_servant(s->devname, servant_pcmk, start_mode, NULL);
 	} else {
 		DBGLOG(LOG_INFO, "Starting servant for device %s",
 				s->devname);
-		s->pid = assign_servant(s->devname, servant, s);
+		s->pid = assign_servant(s->devname, servant, start_mode, s);
 	}
 
 	clock_gettime(CLOCK_MONOTONIC, &s->t_started);
@@ -767,19 +767,19 @@ int main(int argc, char **argv, char **envp)
 	maximize_priority();
 
 	if (strcmp(argv[optind], "create") == 0) {
-		exit_status = init_devices();
+		exit_status = init_devices(servants_leader);
 	} else if (strcmp(argv[optind], "dump") == 0) {
-		exit_status = dump_headers();
+		exit_status = dump_headers(servants_leader);
 	} else if (strcmp(argv[optind], "allocate") == 0) {
-		exit_status = allocate_slots(argv[optind + 1]);
+            exit_status = allocate_slots(argv[optind + 1], servants_leader);
 	} else if (strcmp(argv[optind], "list") == 0) {
-		exit_status = list_slots();
+		exit_status = list_slots(servants_leader);
 	} else if (strcmp(argv[optind], "message") == 0) {
-		exit_status = messenger(argv[optind + 1], argv[optind + 2]);
+            exit_status = messenger(argv[optind + 1], argv[optind + 2], servants_leader);
 	} else if (strcmp(argv[optind], "ping") == 0) {
-		exit_status = ping_via_slots(argv[optind + 1]);
+            exit_status = ping_via_slots(argv[optind + 1], servants_leader);
 	} else if (strcmp(argv[optind], "watch") == 0) {
-                open_any_device();
+            open_any_device(servants_leader);
 
                 /* We only want this to have an effect during watch right now;
                  * pinging and fencing would be too confused */
