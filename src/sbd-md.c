@@ -35,6 +35,11 @@ static int servant_inform_parent = 0;
 static char		sbd_magic[8] = "SBD_SBD_";
 static char		sbd_version  = 0x02;
 
+struct slot_msg_arg_t {
+	const char* name;
+	const char* msg;
+};
+
 static signed char
 cmd2char(const char *cmd)
 {
@@ -838,15 +843,7 @@ int ping_via_slots(const char *name, struct servants_list_item *servants)
 
 int quorum_write(int good_servants)
 {
-	return (good_servants > servant_count/2);	
-}
-
-int quorum_read(int good_servants)
-{
-	if (servant_count >= 3) 
-		return (good_servants > servant_count/2);
-	else
-		return (good_servants >= 1);
+	return (good_servants > servant_count/2);
 }
 
 int messenger(const char *name, const char *msg, struct servants_list_item *servants)

@@ -129,9 +129,14 @@ void servant_start(struct servants_list_item *s)
 		DBGLOG(LOG_INFO, "Starting Pacemaker servant");
 		s->pid = assign_servant(s->devname, servant_pcmk, start_mode, NULL);
 	} else {
+#if SUPPORT_SHARED_DISK
 		DBGLOG(LOG_INFO, "Starting servant for device %s", s->devname);
 		s->pid = assign_servant(s->devname, servant, start_mode, s);
-	}
+#else
+                cl_log(LOG_ERR, "Shared disk functionality not supported");
+                return;
+#endif
+        }
 
 	clock_gettime(CLOCK_MONOTONIC, &s->t_started);
 	return;
@@ -350,6 +355,13 @@ sbd_unlock_pidfile(const char *filename)
 	return unlink(lf_name);
 }
 
+int quorum_read(int good_servants)
+{
+	if (servant_count >= 3) 
+		return (good_servants > servant_count/2);
+	else
+		return (good_servants >= 1);
+}
 
 void inquisitor_child(void)
 {
@@ -672,7 +684,13 @@ int main(int argc, char **argv, char **envp)
 			watchdogdev = strdup(optarg);
 			break;
 		case 'd':
+#if SUPPORT_SHARED_DISK
 			recruit_servant(optarg, 0);
+#else
+                        fprintf(stderr, "Shared disk functionality not supported\n");
+			exit_status = -2;
+			goto out;
+#endif
 			break;
 		case 'P':
 			check_pcmk = 1;
@@ -763,6 +781,7 @@ int main(int argc, char **argv, char **envp)
 
 	maximize_priority();
 
+#if SUPPORT_SHARED_DISK
 	if (strcmp(argv[optind], "create") == 0) {
 		exit_status = init_devices(servants_leader);
 	} else if (strcmp(argv[optind], "dump") == 0) {
@@ -790,7 +809,18 @@ int main(int argc, char **argv, char **envp)
 	} else {
 		exit_status = -2;
 	}
+#else
+        if (strcmp(argv[optind], "watch") == 0) {
+                /* We only want this to have an effect during watch right now;
+                 * pinging and fencing would be too confused */
+                if (check_pcmk) {
+                        recruit_servant("pcmk", 0);
+                        servant_count--;
+                }
 
+                exit_status = inquisitor();
+        }
+#endif
 out:
 	if (exit_status < 0) {
 		if (exit_status == -2) {

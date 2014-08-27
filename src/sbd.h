@@ -42,6 +42,7 @@
 #include <unistd.h>
 #include <uuid/uuid.h>
 #include <qb/qblog.h>
+#include <config.h>
 
 /* signals reserved for multi-disk sbd */
 #define SIG_LIVENESS (SIGRTMIN + 1)	/* report liveness of the disk */
@@ -139,20 +140,18 @@ extern const char* cmdname;
 typedef int (*functionp_t)(const char* devname, int mode, const void* argp);
 
 int assign_servant(const char* devname, functionp_t functionp, int mode, const void* argp);
-int init_devices(struct servants_list_item *servants);
-struct slot_msg_arg_t {
-	const char* name;
-	const char* msg;
-};
 
+#if SUPPORT_SHARED_DISK
 void open_any_device(struct servants_list_item *servants);
+int init_devices(struct servants_list_item *servants);
 int allocate_slots(const char *name, struct servants_list_item *servants);
 int list_slots(struct servants_list_item *servants);
 int ping_via_slots(const char *name, struct servants_list_item *servants);
 int dump_headers(struct servants_list_item *servants);
 int messenger(const char *name, const char *msg, struct servants_list_item *servants);
-
 int servant(const char *diskname, int mode, const void* argp);
+#endif
+
 int servant_pcmk(const char *diskname, int mode, const void* argp);
 
 struct servants_list_item *lookup_servant_by_dev(const char *devname);

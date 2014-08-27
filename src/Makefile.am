@@ -4,7 +4,11 @@ AM_CPPFLAGS =  -I$(includedir)/pacemaker  \
 
 sbin_PROGRAMS = sbd
 
-sbd_SOURCES = sbd-common.c sbd-inquisitor.c sbd-md.c sbd-pacemaker.c setproctitle.c
+sbd_SOURCES = sbd-common.c sbd-inquisitor.c sbd-pacemaker.c setproctitle.c
+
+if SUPPORT_SHARED_DISK
+sbd_SOURCES += sbd-md.c
+endif
 
 sbd_LDFLAGS = $(glib_LIBS) $(libcoroipcc_LIBS)
 

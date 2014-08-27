@@ -72,6 +72,17 @@ fi
 
 AC_PATH_PROGS(POD2MAN, pod2man, pod2man)
 
+AC_ARG_ENABLE([shared-disk],
+[  --enable-shared-disk Turn on functionality that requires shared disk
+     [default=yes]])
+
+DISK=0
+if test "x${enable_shared_disk}" != xno ; then
+   DISK=1
+fi
+AC_DEFINE_UNQUOTED(SUPPORT_SHARED_DISK, $DISK, Turn on functionality that requires shared disk)
+AM_CONDITIONAL(SUPPORT_SHARED_DISK, test "$DISK" = "1")
+
 dnl The Makefiles and shell scripts we output
 AC_CONFIG_FILES([Makefile src/Makefile agent/Makefile man/Makefile])
 
