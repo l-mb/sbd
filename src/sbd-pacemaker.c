@@ -229,7 +229,9 @@ static void
 ais_membership_destroy(gpointer user_data)
 {
 	cl_log(LOG_ERR, "AIS connection terminated - corosync down?");
+#if SUPPORT_PLUGIN
 	ais_fd_sync = -1;
+#endif
 	/* TODO: Is recovery even worth it here? After all, this means
 	 * that corosync died ... */
 	exit(1);
@@ -443,7 +445,7 @@ clean_up(int rc)
 }
 
 int
-servant_pcmk(const char *diskname, const void* argp)
+servant_pcmk(const char *diskname, int mode, const void* argp)
 {
 	int exit_code = 0;
 	crm_cluster_t crm_cluster;
