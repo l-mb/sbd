@@ -313,12 +313,12 @@ compute_status(pe_working_set_t * data_set)
 
 	node_t *node = pe_find_node(data_set->nodes, local_uname);
 
-	if (node->details->unclean) {
+	if (node && node->details && node->details->unclean) {
 		LOGONCE(4, LOG_WARNING, "Node state: UNCLEAN");
-	} else if (node->details->pending) {
+	} else if (node && node->details && node->details->pending) {
 		LOGONCE(5, LOG_WARNING, "Node state: pending");
 		healthy = 2;
-	} else if (node->details->online) {
+	} else if (node && node->details && node->details->online) {
 		LOGONCE(6, LOG_INFO, "Node state: online");
 		healthy = 1;
 	} else {
