@@ -127,6 +127,12 @@ that it needed to self-fence.)
 
 This also affects the I<stonith-timeout> in Pacemaker's CIB; see below.
 
+=item B<-5> I<N>
+
+Warn if loop latency exceeds threshold (optional, watch only)
+
+(default is 3, set to 0 to disable)
+
 =back
 
 =head2 list
